@@ -48,10 +48,12 @@ class BiometryOnboarding extends HTMLElement {
 
         <!-- Loading slot -->
         <slot name="loading" class="loading" style="display: none;"></slot>
-        <!-- Success slot -->
+        <!-- Result slots -->
         <slot name="success" class="success" style="display: none;"></slot>
-        <!-- Error slot -->
-        <slot name="error" class="error" style="display: none;"></slot>
+        <slot name="error-no-face" class="error-no-face" style="display: none;"></slot>
+        <slot name="error-multiple-faces" class="error-multiple-faces" style="display: none;"></slot>
+        <slot name="error-not-centered" class="error-not-centered" style="display: none;"></slot>
+        <slot name="error-other" class="error-other" style="display: none;"></slot>
       </div>
     `;
 
@@ -108,7 +110,15 @@ class BiometryOnboarding extends HTMLElement {
   }
 
   toggleState(state) {
-    const slots = ['loading', 'success', 'error'];
+    const slots = [
+      'loading',
+      'success',
+      'error-no-face',
+      'error-multiple-faces',
+      'error-not-centered',
+      'error-other',
+    ];
+
     slots.forEach((slotName) => {
       const slot = this.shadowRoot.querySelector(`slot[name="${slotName}"]`);
       if (slot) {
@@ -135,12 +145,32 @@ class BiometryOnboarding extends HTMLElement {
       body: formData,
     }).then((response) => response.json())
       .then((data) => {
-        console.log('Onboarding successful:', data);
-        this.toggleState('success');
+        const result = data?.data?.onboard_result;
+        this.resultCode = result?.code;
+        this.description = result?.description || 'Unknown error occurred.';
+
+        switch (this.resultCode) {
+          case 0:
+            this.toggleState('success');
+            break;
+          case 1:
+            this.toggleState('error-no-face');
+            break;
+          case 2:
+            this.toggleState('error-multiple-faces');
+            break;
+          case 3:
+            this.toggleState('error-not-centered');
+            break;
+          default:
+            this.toggleState('error-other');
+        }
+
+        console.log('Onboarding result:', result);
       })
       .catch((error) => {
         console.error('Error onboarding face:', error);
-        this.toggleState('error');
+        this.toggleState('error-other');
       });
   }
 }

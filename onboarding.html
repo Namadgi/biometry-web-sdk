@@ -59,7 +59,10 @@
 
     <div slot="loading">Loading...</div>
     <div slot="success">Onboarding Successful!</div>
-    <div slot="error">Something went wrong. Please try again.</div>
+    <div slot="error-no-face">No face detected or quality is too low.</div>
+    <div slot="error-multiple-faces">Multiple faces detected. Please try again.</div>
+    <div slot="error-not-centered">Face is not centered. Please adjust and try again.</div>
+    <div slot="error-other">An unexpected error occurred. Please try again.</div>
   </biometry-onboarding>
 
   <script src="src/components/biometry-onboarding.js"></script>
