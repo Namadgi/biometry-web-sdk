@@ -8,8 +8,30 @@ export interface VoiceOnboardingResponse {
 }
 
 export interface FaceOnboardingResponse {
-  code: number;
-  description: string;
+  onboard_result: {
+    code: number;
+    description: string
+  },
+  document_auth: {
+    document_type: string;
+    country_code: string;
+    nationality_code: string;
+    nationality_name: string;
+    sex: string;
+    first_name: string;
+    father_name: string;
+    last_name: string;
+    expiry_date: string;
+    document_number: string;
+    birth_date: string;
+    portrait_photo: string;
+    signature: string;
+    document_category: string;
+    issuing_state: string;
+    front_document_type_id: string;
+    contains_rfid: boolean;
+  },
+  message: string;
 }
 
 export interface FaceMatchResponse {
