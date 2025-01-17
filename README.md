@@ -28,3 +28,15 @@ const userFullName = "John Doe";
 const response = await sdk.processVideo(videoFile, phrase, userFullName);
 console.log(response);
 ```
+
+## Example
+
+You can find an example in the example/ directory. The example demonstrates how to integrate the SDK into a React app.
+
+### License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+### More Information
+
+For more detailed documentation on the Biometry API, visit the [official documentation](https://developer.biometrysolutions.com/overview/).
