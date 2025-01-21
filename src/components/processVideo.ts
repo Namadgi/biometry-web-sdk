@@ -5,9 +5,11 @@ export class ProcessVideoComponent extends HTMLElement {
   private apiKey: string | null = null;
 
   private phrase: string;
+  private previewStream: MediaStream | null = null;
   private recordedChunks: Blob[] = [];
   private mediaRecorder: MediaRecorder | null = null;
   private videoFile: File | null = null;
+  private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   private videoElement!: HTMLVideoElement;
   private fileInput!: HTMLInputElement;
@@ -25,7 +27,7 @@ export class ProcessVideoComponent extends HTMLElement {
     // Attach shadow DOM, SDK and UI
     this.attachShadow({ mode: 'open' });
 
-    this.apiKey = this.getAttribute('api-key'); // Fetch the api-key from attributes
+    this.apiKey = this.getAttribute('api-key');
     this.initializeSDK();
     this.initializeUI();
   }
@@ -33,18 +35,6 @@ export class ProcessVideoComponent extends HTMLElement {
   static get observedAttributes() {
     return ['api-key', 'user-fullname'];
   }
-
-  // get apiKey(): string | null {
-  //   return this.getAttribute('api-key');
-  // }
-
-  // set apiKey(value: string | null) {
-  //   if (value) {
-  //     this.setAttribute('api-key', value);
-  //   } else {
-  //     this.removeAttribute('api-key');
-  //   }
-  // }
 
   get userFullname(): string | null {
     return this.getAttribute('user-fullname');
@@ -86,41 +76,148 @@ export class ProcessVideoComponent extends HTMLElement {
     return Math.random().toString().slice(2, 10); // 8-digit random phrase
   }
 
-  private initializeUI() {
+  initializeUI() {
     this.shadowRoot!.innerHTML = `
-      <div>
-        <slot name="video">
-          <video id="video-preview" controls muted autoplay></video>
-        </slot>
-        <slot name="record-button">
-          <button id="record-button">Start Recording</button>
-        </slot>
-        <slot name="stop-button">
-          <button id="stop-button" style="display: none;">Stop Recording</button>
-        </slot>
-        <slot name="file-input">
-          <input type="file" accept="video/*" id="file-input" />
-        </slot>
-        <slot name="phrase-input">
-          <input type="text" id="phrase-input" value="${this.phrase}" placeholder="Enter your phrase" />
-        </slot>
-        <slot name="submit-button">
-          <button id="submit-button">Submit Video</button>
-        </slot>
-        <slot name="loading" style="display: none;">Loading...</slot>
-        <slot name="error" style="display: none;">An error occurred</slot>
-        <slot name="success" style="display: none;">Video submitted successfully!</slot>
-      </div>
-    `;
+  <style>
+    :host {
+      display: block;
+      font-family: Arial, sans-serif;
+      --primary-color: #007bff;
+      --secondary-color: #6c757d;
+      --button-bg: var(--primary-color);
+      --button-text-color: #fff;
+      --input-border-color: var(--secondary-color);
+      --input-focus-border-color: var(--primary-color);
+      --spacing: 16px;
+      --button-padding: 10px 20px;
+      --border-radius: 4px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing);
+      padding: var(--spacing);
+      max-width: 500px;
+      margin: 0 auto;
+      text-align: center;
+    }
 
+    .video-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    #timer-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background-color: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+    }
+
+    video {
+      max-width: 100%;
+      border-radius: var(--border-radius);
+    }
+
+    button {
+      background-color: var(--button-bg);
+      color: var(--button-text-color);
+      border: none;
+      border-radius: var(--border-radius);
+      padding: var(--button-padding);
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    input[type="text"], input[type="file"] {
+      padding: var(--button-padding);
+      border: 1px solid var(--input-border-color);
+      border-radius: var(--border-radius);
+      width: 100%;
+      max-width: 100%;
+    }
+
+    input[type="text"]:focus, input[type="file"]:focus {
+      outline: none;
+      border-color: var(--input-focus-border-color);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .message {
+      padding: var(--spacing);
+      border-radius: var(--border-radius);
+      font-size: 14px;
+    }
+
+    .message.success {
+      color: #155724;
+      background-color: #d4edda;
+      border: 1px solid #c3e6cb;
+    }
+
+    .message.error {
+      color: #721c24;
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+  <div class="container">
+    <slot name="video">
+      <div class="video-wrapper">
+        <video id="video-preview" muted autoplay></video>
+        <div id="timer-overlay" class="hidden">00:00</div>
+    </div>
+    </slot>
+    <slot name="record-button">
+      <button id="record-button">Start Recording</button>
+    </slot>
+    <slot name="stop-button">
+      <button id="stop-button" disabled>Stop Recording</button>
+    </slot>
+    <slot name="file-input">
+      <input type="file" accept="video/*" id="file-input" />
+    </slot>
+    <slot name="phrase-input">
+      <input type="text" id="phrase-input" value="${this.phrase}" placeholder="Enter your phrase" />
+    </slot>
+    <slot name="submit-button">
+      <button id="submit-button">Submit Video</button>
+    </slot>
+    <slot name="loading">
+      <div class="message">Loading...</div>
+    </slot>
+    <slot name="error">
+      <div class="message error">An error occurred</div>
+    </slot>
+    <slot name="success">
+      <div class="message success">Video submitted successfully!</div>
+    </slot>
+  </div>
+  `;
     this.videoElement = this.shadowRoot!.querySelector('#video-preview') as HTMLVideoElement;
     this.fileInput = this.shadowRoot!.querySelector('#file-input') as HTMLInputElement;
     this.phraseInput = this.shadowRoot!.querySelector('#phrase-input') as HTMLInputElement;
-    this.recordButton = this.shadowRoot!.querySelector('#record-button') as HTMLButtonElement;
-    this.stopButton = this.shadowRoot!.querySelector('#stop-button') as HTMLButtonElement;
+    
+    const recordButtonSlot = this.shadowRoot!.querySelector('slot[name="record-button"]') as HTMLSlotElement;
+    const stopButtonSlot = this.shadowRoot!.querySelector('slot[name="stop-button"]') as HTMLSlotElement;
 
+    this.recordButton = this.getSlotButton(recordButtonSlot, 'record-button');
+    this.stopButton = this.getSlotButton(stopButtonSlot, 'stop-button');
+  
     this.recordButton.addEventListener('click', () => this.startRecording());
     this.stopButton.addEventListener('click', () => this.stopRecording());
+
     this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
     this.phraseInput.addEventListener('input', (e) => {
       this.phrase = (e.target as HTMLInputElement).value;
@@ -130,30 +227,20 @@ export class ProcessVideoComponent extends HTMLElement {
     this.attachSlotListeners('record-button', 'click', () => this.startRecording());
     this.attachSlotListeners('stop-button', 'click', () => this.stopRecording());
     this.attachSlotListeners('submit-button', 'click', () => this.handleSubmit());
+    this.setupPreview();
   }
 
-  // private attachSlotListeners(slotName: string, event: string, callback: EventListener) {
-  //   const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLSlotElement;
-  
-  //   if (slot) {
-  //     const assignListener = () => {
-  //       const assignedNodes = slot.assignedElements();
-  //       if (assignedNodes.length > 0) {
-  //         assignedNodes.forEach((node) => node.addEventListener(event, callback));
-  //       } else {
-  //         // Fallback to default content if no external content is slotted
-  //         const defaultNode = slot.querySelector(`#${slotName}`);
-  //         if (defaultNode) {
-  //           defaultNode.addEventListener(event, callback);
-  //         }
-  //       }
-  //     };
-  
-  //     // Listen for slot changes and reassign listeners
-  //     slot.addEventListener('slotchange', assignListener);
-  //     assignListener(); // Initial assignment
-  //   }
-  // }
+  private getSlotButton(slot: HTMLSlotElement, buttonId: string): HTMLButtonElement {
+    const assignedNodes = slot.assignedElements();
+    if (assignedNodes.length > 0) {
+        // Return the first assigned element for the button (custom button)
+        return assignedNodes[0] as HTMLButtonElement;
+    } else {
+        // Return the default button if no custom button is provided
+        return this.shadowRoot!.querySelector(`#${buttonId}`) as HTMLButtonElement;
+    }
+  }
+
   private attachSlotListeners(slotName: string, event: string, callback: EventListener) {
     const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLSlotElement;
   
@@ -172,7 +259,7 @@ export class ProcessVideoComponent extends HTMLElement {
   
       // Listen for slot changes and update event listeners dynamically
       slot.addEventListener('slotchange', updateListeners);
-      updateListeners(); // Initial assignment
+      updateListeners();
     }
   }
 
@@ -188,47 +275,124 @@ export class ProcessVideoComponent extends HTMLElement {
     });
   }
 
-  private async startRecording() {
+  private async setupPreview() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      this.previewStream = stream;
+  
       this.videoElement.srcObject = stream;
-
-      this.mediaRecorder = new MediaRecorder(stream);
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.recordedChunks.push(event.data);
-        }
-      };
-
-      this.mediaRecorder.start();
-      this.recordButton.style.display = 'none';
-      this.stopButton.style.display = 'block';
+      this.videoElement.controls = false;
+      this.videoElement.play();
     } catch (error) {
       this.toggleState('error');
-      console.error('Error starting video recording:', error);
+      console.error('Error setting up video preview:', error);
     }
   }
 
-  private async stopRecording() {
-    if (this.mediaRecorder) {
-      this.mediaRecorder.stop();
-      this.mediaRecorder.onstop = () => {
-        const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-        this.videoFile = new File([blob], 'recorded-video.webm', { type: 'video/webm' });
+  private async startTimer() {
+    const timerOverlay = this.shadowRoot!.querySelector('#timer-overlay') as HTMLElement;
+    timerOverlay.textContent = '00:00';
+    timerOverlay.classList.remove('hidden');
+
+    let seconds = 0;
+    this.timerInterval = setInterval(() => {
+      seconds++;
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      timerOverlay.textContent = `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+    }, 1000);
+  }
+  private async stopTimer() {
+      if (this.timerInterval) {
+        clearInterval(this.timerInterval);
+        this.timerInterval = null;
+      }
+      const timerOverlay = this.shadowRoot!.querySelector('#timer-overlay') as HTMLElement;
+      timerOverlay.classList.add('hidden');
+  }
+
+  private async startRecording() {
+    try {
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            console.log('Recording already in progress.');
+            return;
+        }
+
+        if (!this.previewStream) {
+            console.log('Initializing preview stream...');
+            this.previewStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true,
+            });
+        }
+
+        this.videoElement.muted = true;
+        this.videoElement.srcObject = this.previewStream;
+        this.videoElement.currentTime = 0;
+
+        await this.videoElement.play();
+
+        this.mediaRecorder = new MediaRecorder(this.previewStream);
         this.recordedChunks = [];
-        this.videoElement.srcObject = null;
-        this.videoElement.src = URL.createObjectURL(blob);
-        this.videoElement.play();
-      };
 
-      // Stop all tracks
-      const tracks = (this.videoElement.srcObject as MediaStream)?.getTracks();
-      tracks?.forEach((track) => track.stop());
+        this.mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                this.recordedChunks.push(event.data);
+            }
+        };
+
+        this.mediaRecorder.onstop = () => {
+            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            const videoURL = URL.createObjectURL(blob);
+
+            this.videoElement.src = videoURL;
+            this.videoElement.controls = true;
+            this.videoElement.play();
+            this.videoElement.muted = false;
+            this.stopTimer();
+        };
+
+        this.mediaRecorder.start();
+        this.startTimer();
+
+        this.recordButton.disabled = true;
+        this.stopButton.disabled = false;
+        this.videoElement.controls = false;
+    } catch (error) {
+        console.error('Error starting video recording:', error);
     }
+}
 
-    this.recordButton.style.display = 'block';
-    this.stopButton.style.display = 'none';
+private stopRecording() {
+    try {
+        if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
+            console.log('No recording in progress.');
+            return;
+        }
+
+        this.mediaRecorder.stop();
+
+        if (this.previewStream) {
+            this.previewStream.getTracks().forEach(track => track.stop());
+        }
+
+        this.videoElement.srcObject = null;
+        this.videoElement.src = '';
+        this.videoElement.controls = false;
+
+        this.recordButton.disabled = false;
+        this.stopButton.disabled = true;
+
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+        this.previewStream = null;
+
+    } catch (error) {
+        console.error('Error stopping video recording:', error);
+    }
   }
+
+
 
   private handleFileUpload(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];
@@ -290,5 +454,4 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 }
 
-// Register the custom element
 customElements.define('process-video', ProcessVideoComponent);
