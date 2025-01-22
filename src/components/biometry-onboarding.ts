@@ -65,11 +65,15 @@ class BiometryOnboarding extends HTMLElement {
   validateAttributes(): void {
     if (!this.apiKey) {
       console.error("API key is required.");
+      this.toggleState("error-other");
+      return;
     }
     
-   if (!this.userFullname) { 
-     console.error("User fullname is required."); 
-   }
+    if (!this.userFullname) { 
+      console.error("User fullname is required."); 
+      this.toggleState("error-other");
+      return;
+    }
   }
 
   init(): void { 
@@ -156,14 +160,25 @@ class BiometryOnboarding extends HTMLElement {
     const canvasSlot = this.shadow.querySelector('slot[name="canvas"]') as HTMLSlotElement;
     const buttonSlot = this.shadow.querySelector('slot[name="button"]') as HTMLSlotElement;
 
-    this.videoElement = (videoSlot.assignedElements()[0] as HTMLVideoElement) || this.shadow.querySelector("#video") as HTMLVideoElement;
-    this.canvasElement = (canvasSlot.assignedElements()[0] as HTMLCanvasElement) || this.shadow.querySelector("#canvas") as HTMLCanvasElement;
-    this.captureButton = (buttonSlot.assignedElements()[0] as HTMLButtonElement) || this.shadow.querySelector("#button") as HTMLButtonElement;
+    const assignedVideoElements = videoSlot.assignedElements();
+    this.videoElement = (assignedVideoElements.length > 0 ? assignedVideoElements[0] : null) as HTMLVideoElement || this.shadow.querySelector("#video") as HTMLVideoElement;
 
-    if (this.captureButton) {
-      this.captureButton.addEventListener("click", this.capturePhoto);
-    } else {
+    const assignedCanvasElements = canvasSlot.assignedElements();
+    this.canvasElement = (assignedCanvasElements.length > 0 ? assignedCanvasElements[0] : null) as HTMLCanvasElement || this.shadow.querySelector("#canvas") as HTMLCanvasElement;
+    
+    const assignedButtonElements = buttonSlot.assignedElements();
+    this.captureButton = (assignedButtonElements.length > 0 ? assignedButtonElements[0] : null) as HTMLButtonElement || this.shadow.querySelector("#button") as HTMLButtonElement;
+    
+    if (!this.videoElement) {
+      console.error("Video element is missing.");
+      return;
+    }
+
+    if (!this.captureButton) {
       console.error("Capture button is missing.");
+      return;
+    } else {
+      this.captureButton.addEventListener("click", this.capturePhoto);
     }
   }
 
@@ -205,41 +220,46 @@ class BiometryOnboarding extends HTMLElement {
       this.toggleState("loading");
 
       this.canvasElement.toBlob(async (blob) => {
-        if (!blob) {
-          console.error("Failed to capture photo.");
-          this.toggleState("error-other");
-          return;
-        }
-
-        const file = new File([blob], "onboard-face.jpg", { type: "image/jpeg" });
-
         try {
-          const response = await this.sdk!.onboardFace(file, this.userFullname!);
-          const result = response.data.onboard_result;
-
-          this.resultCode = result?.code;
-          this.description = result?.description || "Unknown error occurred.";
-
-          switch (this.resultCode) {
-            case 0:
-              this.toggleState("success");
-              break;
-            case 1:
-              this.toggleState("error-no-face");
-              break;
-            case 2:
-              this.toggleState("error-multiple-faces");
-              break;
-            case 3:
-              this.toggleState("error-not-centered");
-              break;
-            default:
-              this.toggleState("error-other");
+          if (!blob) {
+            console.error("Failed to capture photo.");
+            this.toggleState("error-other");
+            return;
           }
 
-          console.log("Onboarding result:", result);
+          const file = new File([blob], "onboard-face.jpg", { type: "image/jpeg" });
+
+          try {
+            const response = await this.sdk!.onboardFace(file, this.userFullname!);
+            const result = response.data.onboard_result;
+
+            this.resultCode = result?.code;
+            this.description = result?.description || "Unknown error occurred.";
+
+            switch (this.resultCode) {
+              case 0:
+                this.toggleState("success");
+                break;
+              case 1:
+                this.toggleState("error-no-face");
+                break;
+              case 2:
+                this.toggleState("error-multiple-faces");
+                break;
+              case 3:
+                this.toggleState("error-not-centered");
+                break;
+              default:
+                this.toggleState("error-other");
+            }
+
+            console.log("Onboarding result:", result);
+          } catch (error) {
+            console.error("Error onboarding face:", error);
+            this.toggleState("error-other");
+          }
         } catch (error) {
-          console.error("Error onboarding face:", error);
+          console.error("Error in toBlob callback:", error);
           this.toggleState("error-other");
         }
       }, "image/jpeg");
