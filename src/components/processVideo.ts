@@ -78,133 +78,133 @@ export class ProcessVideoComponent extends HTMLElement {
 
   initializeUI() {
     this.shadowRoot!.innerHTML = `
-  <style>
-    :host {
-      display: block;
-      font-family: Arial, sans-serif;
-      --primary-color: #007bff;
-      --secondary-color: #6c757d;
-      --button-bg: var(--primary-color);
-      --button-text-color: #fff;
-      --input-border-color: var(--secondary-color);
-      --input-focus-border-color: var(--primary-color);
-      --spacing: 16px;
-      --button-padding: 10px 20px;
-      --border-radius: 4px;
-    }
-    
-    .container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: var(--spacing);
-      padding: var(--spacing);
-      max-width: 500px;
-      margin: 0 auto;
-      text-align: center;
-    }
+    <style>
+      :host {
+        display: block;
+        font-family: Arial, sans-serif;
+        --primary-color: #007bff;
+        --secondary-color: #6c757d;
+        --button-bg: var(--primary-color);
+        --button-text-color: #fff;
+        --input-border-color: var(--secondary-color);
+        --input-focus-border-color: var(--primary-color);
+        --spacing: 16px;
+        --button-padding: 10px 20px;
+        --border-radius: 4px;
+      }
+      
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing);
+        padding: var(--spacing);
+        max-width: 500px;
+        margin: 0 auto;
+        text-align: center;
+      }
 
-    .video-wrapper {
-      position: relative;
-      display: inline-block;
-    }
+      .video-wrapper {
+        position: relative;
+        display: inline-block;
+      }
 
-    #timer-overlay {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background-color: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 5px 10px;
-      border-radius: 4px;
-      font-family: Arial, sans-serif;
-      font-size: 14px;
-    }
+      #timer-overlay {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+      }
 
-    video {
-      max-width: 100%;
-      border-radius: var(--border-radius);
-    }
+      video {
+        max-width: 100%;
+        border-radius: var(--border-radius);
+      }
 
-    button {
-      background-color: var(--button-bg);
-      color: var(--button-text-color);
-      border: none;
-      border-radius: var(--border-radius);
-      padding: var(--button-padding);
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-    }
+      button {
+        background-color: var(--button-bg);
+        color: var(--button-text-color);
+        border: none;
+        border-radius: var(--border-radius);
+        padding: var(--button-padding);
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
 
-    input[type="text"], input[type="file"] {
-      padding: var(--button-padding);
-      border: 1px solid var(--input-border-color);
-      border-radius: var(--border-radius);
-      width: 100%;
-      max-width: 100%;
-    }
+      input[type="text"], input[type="file"] {
+        padding: var(--button-padding);
+        border: 1px solid var(--input-border-color);
+        border-radius: var(--border-radius);
+        width: 100%;
+        max-width: 100%;
+      }
 
-    input[type="text"]:focus, input[type="file"]:focus {
-      outline: none;
-      border-color: var(--input-focus-border-color);
-    }
+      input[type="text"]:focus, input[type="file"]:focus {
+        outline: none;
+        border-color: var(--input-focus-border-color);
+      }
 
-    .hidden {
-      display: none;
-    }
+      .hidden {
+        display: none;
+      }
 
-    .message {
-      padding: var(--spacing);
-      border-radius: var(--border-radius);
-      font-size: 14px;
-    }
+      .message {
+        padding: var(--spacing);
+        border-radius: var(--border-radius);
+        font-size: 14px;
+      }
 
-    .message.success {
-      color: #155724;
-      background-color: #d4edda;
-      border: 1px solid #c3e6cb;
-    }
+      .message.success {
+        color: #155724;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+      }
 
-    .message.error {
-      color: #721c24;
-      background-color: #f8d7da;
-      border: 1px solid #f5c6cb;
-    }
-  </style>
-  <div class="container">
-    <slot name="video">
-      <div class="video-wrapper">
-        <video id="video-preview" muted autoplay></video>
-        <div id="timer-overlay" class="hidden">00:00</div>
+      .message.error {
+        color: #721c24;
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+      }
+    </style>
+    <div class="container">
+      <slot name="video">
+        <div class="video-wrapper">
+          <video id="video-preview" muted autoplay></video>
+          <div id="timer-overlay" class="hidden">00:00</div>
+      </div>
+      </slot>
+      <slot name="record-button">
+        <button id="record-button">Start Recording</button>
+      </slot>
+      <slot name="stop-button">
+        <button id="stop-button" disabled>Stop Recording</button>
+      </slot>
+      <slot name="file-input">
+        <input type="file" accept="video/*" id="file-input" />
+      </slot>
+      <slot name="phrase-input">
+        <input type="text" id="phrase-input" value="${this.phrase}" placeholder="Enter your phrase" />
+      </slot>
+      <slot name="submit-button">
+        <button id="submit-button">Submit Video</button>
+      </slot>
+      <slot name="loading">
+        <div class="message">Loading...</div>
+      </slot>
+      <slot name="error">
+        <div class="message error">An error occurred</div>
+      </slot>
+      <slot name="success">
+        <div class="message success">Video submitted successfully!</div>
+      </slot>
     </div>
-    </slot>
-    <slot name="record-button">
-      <button id="record-button">Start Recording</button>
-    </slot>
-    <slot name="stop-button">
-      <button id="stop-button" disabled>Stop Recording</button>
-    </slot>
-    <slot name="file-input">
-      <input type="file" accept="video/*" id="file-input" />
-    </slot>
-    <slot name="phrase-input">
-      <input type="text" id="phrase-input" value="${this.phrase}" placeholder="Enter your phrase" />
-    </slot>
-    <slot name="submit-button">
-      <button id="submit-button">Submit Video</button>
-    </slot>
-    <slot name="loading">
-      <div class="message">Loading...</div>
-    </slot>
-    <slot name="error">
-      <div class="message error">An error occurred</div>
-    </slot>
-    <slot name="success">
-      <div class="message success">Video submitted successfully!</div>
-    </slot>
-  </div>
-  `;
+    `;
     this.videoElement = this.shadowRoot!.querySelector('#video-preview') as HTMLVideoElement;
     this.fileInput = this.shadowRoot!.querySelector('#file-input') as HTMLInputElement;
     this.phraseInput = this.shadowRoot!.querySelector('#phrase-input') as HTMLInputElement;
@@ -344,6 +344,7 @@ export class ProcessVideoComponent extends HTMLElement {
         this.mediaRecorder.onstop = () => {
             const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
             const videoURL = URL.createObjectURL(blob);
+            this.videoFile = new File([blob], 'recorded_video.webm', { type: 'video/webm' });
 
             this.videoElement.src = videoURL;
             this.videoElement.controls = true;
@@ -391,8 +392,6 @@ private stopRecording() {
         console.error('Error stopping video recording:', error);
     }
   }
-
-
 
   private handleFileUpload(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];
