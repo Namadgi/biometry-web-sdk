@@ -8,6 +8,14 @@ export interface VoiceOnboardingResponse {
 }
 
 export interface FaceOnboardingResponse {
+  data: {
+    onboard_result: FaceOnboardingResult;
+    document_auth?: {};
+  },
+  message: string;
+}
+
+export interface FaceOnboardingResult {
   code: number;
   description: string;
 }
