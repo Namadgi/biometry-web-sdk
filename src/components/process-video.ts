@@ -10,6 +10,7 @@ export class ProcessVideoComponent extends HTMLElement {
   private mediaRecorder: MediaRecorder | null = null;
   private videoFile: File | null = null;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
+  private recordingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private videoElement!: HTMLVideoElement;
   private fileInput!: HTMLInputElement;
@@ -18,6 +19,7 @@ export class ProcessVideoComponent extends HTMLElement {
   private stopButton!: HTMLButtonElement;
 
   private errorState: string | null = null;
+  private timeLimit: number = 30;
 
   constructor(sdk: any, phraseGenerator?: () => string) {
     super();
@@ -30,22 +32,6 @@ export class ProcessVideoComponent extends HTMLElement {
     this.apiKey = this.getAttribute('api-key');
     this.initializeSDK();
     this.initializeUI();
-  }
-
-  static get observedAttributes() {
-    return ['api-key', 'user-fullname'];
-  }
-
-  get userFullname(): string | null {
-    return this.getAttribute('user-fullname');
-  }
-
-  set userFullname(value: string | null) {
-    if (value) {
-      this.setAttribute('user-fullname', value);
-    } else {
-      this.removeAttribute('user-fullname');
-    }
   }
   
   private initializeSDK() {
@@ -233,15 +219,13 @@ export class ProcessVideoComponent extends HTMLElement {
   private getSlotButton(slot: HTMLSlotElement, buttonId: string): HTMLButtonElement {
     const assignedNodes = slot.assignedElements();
     if (assignedNodes.length > 0) {
-        // Return the first assigned element for the button (custom button)
         return assignedNodes[0] as HTMLButtonElement;
     } else {
-        // Return the default button if no custom button is provided
         return this.shadowRoot!.querySelector(`#${buttonId}`) as HTMLButtonElement;
     }
   }
 
-  private attachSlotListeners(slotName: string, event: string, callback: EventListener) {
+  attachSlotListeners(slotName: string, event: string, callback: EventListener) {
     const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLSlotElement;
   
     if (slot) {
@@ -250,21 +234,40 @@ export class ProcessVideoComponent extends HTMLElement {
         if (assignedNodes.length > 0) {
           // Remove listeners from previous elements
           assignedNodes.forEach((node) => {
-            // Ensure we don't attach the listener multiple times
             node.removeEventListener(event, callback);
             node.addEventListener(event, callback);
           });
         }
       };
   
-      // Listen for slot changes and update event listeners dynamically
       slot.addEventListener('slotchange', updateListeners);
       updateListeners();
     }
   }
 
+  replaceSlotContent(slotName: string, content: string | HTMLElement) {
+    const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLElement;
+    if (slot) {
+      if (typeof content === 'string') {
+        slot.innerHTML = content;
+      } else if (content instanceof HTMLElement) {
+        slot.innerHTML = '';
+        slot.appendChild(content);
+      }
+    }
+  }
+  
+  removeSlotListener(slotName: string, event: string, callback: EventListener) {
+    const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLSlotElement;
+    if (slot) {
+      const assignedNodes = slot.assignedElements();
+      assignedNodes.forEach((node) => {
+        node.removeEventListener(event, callback);
+      });
+    }
+  }
+
   private toggleState(state: 'loading' | 'success' | 'error' | null) {
-    this.errorState = state;
     const states = ['loading', 'success', 'error'];
 
     states.forEach((slotName) => {
@@ -301,17 +304,24 @@ export class ProcessVideoComponent extends HTMLElement {
       const remainingSeconds = seconds % 60;
       timerOverlay.textContent = `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
     }, 1000);
+
+    this.recordingTimeout = setTimeout(() => {
+      this.stopRecording();
+    }, this.timeLimit * 1000);
   }
   private async stopTimer() {
-      if (this.timerInterval) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-      }
-      const timerOverlay = this.shadowRoot!.querySelector('#timer-overlay') as HTMLElement;
-      timerOverlay.classList.add('hidden');
+    if (this.recordingTimeout) {
+      clearTimeout(this.recordingTimeout);
+    }
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+    const timerOverlay = this.shadowRoot!.querySelector('#timer-overlay') as HTMLElement;
+    timerOverlay.classList.add('hidden');
   }
 
-  private async startRecording() {
+  public async startRecording() {
     try {
         if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
             console.log('Recording already in progress.');
@@ -362,9 +372,9 @@ export class ProcessVideoComponent extends HTMLElement {
     } catch (error) {
         console.error('Error starting video recording:', error);
     }
-}
+  }
 
-private stopRecording() {
+  public stopRecording() {
     try {
         if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
             console.log('No recording in progress.');
@@ -405,7 +415,7 @@ private stopRecording() {
     }
   }
 
-  private async handleSubmit() {
+  public async handleSubmit() {
     if (!this.videoFile) {
       this.toggleState('error');
       console.error('No video file to submit.');
@@ -435,6 +445,26 @@ private stopRecording() {
     }
   }
 
+  static get observedAttributes() {
+    return ['api-key', 'user-fullname'];
+  }
+
+  get userFullname(): string | null {
+    return this.getAttribute('user-fullname');
+  }
+
+  set userFullname(value: string | null) {
+    if (value) {
+      this.setAttribute('user-fullname', value);
+    } else {
+      this.removeAttribute('user-fullname');
+    }
+  }
+
+  get isRecording(): boolean {
+    return this.mediaRecorder?.state === 'recording';
+  }  
+
   get currentPhrase(): string {
     return this.phrase;
   }
@@ -448,8 +478,38 @@ private stopRecording() {
     return this.videoElement?.duration || null;
   }
 
+  get currentFile(): File | null {
+    return this.videoFile;
+  }
+
+  get currentStream(): MediaStream | null {
+    return this.previewStream;
+  }
+
   set sdkInstance(newSdk: any) {
     this.sdk = newSdk;
+  }
+
+  get videoElementRef(): HTMLVideoElement {
+    return this.videoElement;
+  }
+  
+  get fileInputRef(): HTMLInputElement {
+    return this.fileInput;
+  }
+
+  get recordingTimeLimit(): number {
+    return this.timeLimit;
+  }
+
+  set recordingTimeLimit(value: number) {
+    this.timeLimit = value;
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      if (this.recordingTimeout) {
+        clearTimeout(this.recordingTimeout);
+      }
+      this.recordingTimeout = setTimeout(() => this.stopRecording(), this.timeLimit * 1000);
+    }
   }
 }
 
