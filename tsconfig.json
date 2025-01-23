@@ -1,26 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2020", // Modern JavaScript version
-    "module": "ES2020", // Use ES modules
-    "moduleResolution": "node", // Resolve imports like node.js
-    "outDir": "dist",
-    "declaration": true, // Generate type declarations
-    "declarationMap": true, // Generate .d.ts.map files
-    "strict": true, // Strict type checking
-    "esModuleInterop": true, // For compatibility with CommonJS
-    "skipLibCheck": true, // Ignore type checks for dependencies
-    "baseUrl": ".", // Base URL for module resolution
-    "rootDir": "./src",
-    "paths": {
-      "*": ["src/*"] // Simplify imports
-    }
+    "module": "ESNext",
+    "target": "ES2017",
+    "declaration": true,
+    "declarationDir": "./dist",
+    "outDir": "./dist",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
   },
-  "include": [
-    "src/**/*" // Include all .ts files in src/
-  ],
-  "exclude": [
-    "node_modules", // Exclude dependencies
-    "examples", // Exclude examples folder
-    "src/**/*.test.ts"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BiometrySDK } from '../../../src/sdk';
+import { BiometrySDK } from 'biometry-sdk';
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const initializeSdk = () => {
     if (apiKey) {
       setSdk(new BiometrySDK(apiKey));
+      sdk?.giveConsent(true, 'John Doe'); 
       setResult('SDK initialized successfully!');
     } else {
       setResult('Please provide a valid API key.');
