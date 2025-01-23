@@ -51,6 +51,13 @@ export class ProcessVideoComponent extends HTMLElement {
     }
   }
 
+  disconnectedCallback() {
+    this.stopRecording();
+    if (this.previewStream) {
+      this.previewStream.getTracks().forEach(track => track.stop());
+    }
+  }
+
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
     if (name === 'api-key' && newValue !== oldValue) {
       this.apiKey = newValue;
@@ -200,20 +207,17 @@ export class ProcessVideoComponent extends HTMLElement {
 
     this.recordButton = this.getSlotButton(recordButtonSlot, 'record-button');
     this.stopButton = this.getSlotButton(stopButtonSlot, 'stop-button');
-  
-    this.recordButton.addEventListener('click', () => this.startRecording());
-    this.stopButton.addEventListener('click', () => this.stopRecording());
 
     this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
     this.phraseInput.addEventListener('input', (e) => {
       this.phrase = (e.target as HTMLInputElement).value;
     });
-    this.shadowRoot!.querySelector('#submit-button')!.addEventListener('click', () => this.handleSubmit());
 
     this.attachSlotListeners('record-button', 'click', () => this.startRecording());
     this.attachSlotListeners('stop-button', 'click', () => this.stopRecording());
     this.attachSlotListeners('submit-button', 'click', () => this.handleSubmit());
     this.setupPreview();
+    this.toggleState(null);
   }
 
   private getSlotButton(slot: HTMLSlotElement, buttonId: string): HTMLButtonElement {
@@ -322,6 +326,10 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 
   public async startRecording() {
+    if (!window.MediaRecorder) {
+      console.error('MediaRecorder API is not supported in this browser');
+      return;
+    }
     try {
         if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
             console.log('Recording already in progress.');
@@ -405,7 +413,12 @@ export class ProcessVideoComponent extends HTMLElement {
 
   private handleFileUpload(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];
-    if (file && file.type.startsWith('video/')) {
+    if (file?.type?.startsWith('video/')) {
+      if (file.size > 100 * 1024 * 1024) { // 100MB limit
+        this.toggleState('error');
+        console.error('File size exceeds limit of 100MB');
+        return;
+      }
       this.videoFile = file;
       this.videoElement.src = URL.createObjectURL(file);
       this.videoElement.play();
@@ -431,12 +444,7 @@ export class ProcessVideoComponent extends HTMLElement {
     this.toggleState('loading');
 
     try {
-      const headers = {
-        Authorization: `Bearer ${this.apiKey}`,
-        'X-User-Fullname': this.userFullname,
-      };
-
-      const result = await this.sdk.processVideo(this.videoFile, this.phrase, headers);
+      const result = await this.sdk.processVideo(this.videoFile, this.phrase, this.userFullname);
       console.log('Response from processVideo:', result);
       this.toggleState('success');
     } catch (error) {
