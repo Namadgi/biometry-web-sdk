@@ -31,8 +31,10 @@ export class BiometrySDK {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Error ${response.status}: ${error.message}`);
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData?.error || errorData?.message || 'Unknown error occurred';
+  
+      throw new Error(`Error ${response.status}: ${errorMessage}`);
     }
 
     return await response.json();

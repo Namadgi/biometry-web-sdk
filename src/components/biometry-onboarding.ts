@@ -1,7 +1,8 @@
 import { BiometrySDK } from "../sdk.js";
+import { BiometryAttributes, BiometryOnboardingState } from "../types.js";
 
 class BiometryOnboarding extends HTMLElement {
-  private shadow: ShadowRoot;
+  private readonly shadow: ShadowRoot;
   private sdk: BiometrySDK | null;
   private videoElement: HTMLVideoElement | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
@@ -20,7 +21,7 @@ class BiometryOnboarding extends HTMLElement {
   }
 
   static get observedAttributes(): string[] {
-    return ["api-key", "user-fullname"];
+    return Object.values(BiometryAttributes);
   }
 
   get apiKey(): string | null {
@@ -65,13 +66,13 @@ class BiometryOnboarding extends HTMLElement {
   validateAttributes(): void {
     if (!this.apiKey) {
       console.error("API key is required.");
-      this.toggleState("error-other");
+      this.toggleState(BiometryOnboardingState.ErrorOther);
       return;
     }
     
     if (!this.userFullname) { 
       console.error("User fullname is required."); 
-      this.toggleState("error-other");
+      this.toggleState(BiometryOnboardingState.ErrorOther);
       return;
     }
   }
@@ -132,19 +133,19 @@ class BiometryOnboarding extends HTMLElement {
     if (this.apiKey) {
       this.sdk = new BiometrySDK(this.apiKey);
     } else {
-      this.toggleState("error-other");
+      this.toggleState(BiometryOnboardingState.ErrorOther);
       console.error("API key is required to initialize the SDK.");
     }
   }
 
-  private toggleState(state: string): void {
+  private toggleState(state: BiometryOnboardingState | string): void {
     const slots = [
-      "loading",
-      "success",
-      "error-no-face",
-      "error-multiple-faces",
-      "error-not-centered",
-      "error-other",
+      BiometryOnboardingState.Loading,
+      BiometryOnboardingState.Success,
+      BiometryOnboardingState.ErrorNoFace,
+      BiometryOnboardingState.ErrorMultipleFaces,
+      BiometryOnboardingState.ErrorNotCentered,
+      BiometryOnboardingState.ErrorOther,
     ];
 
     slots.forEach((slotName) => {
@@ -223,7 +224,7 @@ class BiometryOnboarding extends HTMLElement {
         try {
           if (!blob) {
             console.error("Failed to capture photo.");
-            this.toggleState("error-other");
+            this.toggleState(BiometryOnboardingState.ErrorOther);
             return;
           }
 
@@ -238,34 +239,34 @@ class BiometryOnboarding extends HTMLElement {
 
             switch (this.resultCode) {
               case 0:
-                this.toggleState("success");
+                this.toggleState(BiometryOnboardingState.Success);
                 break;
               case 1:
-                this.toggleState("error-no-face");
+                this.toggleState(BiometryOnboardingState.ErrorNoFace);
                 break;
               case 2:
-                this.toggleState("error-multiple-faces");
+                this.toggleState(BiometryOnboardingState.ErrorMultipleFaces);
                 break;
               case 3:
-                this.toggleState("error-not-centered");
+                this.toggleState(BiometryOnboardingState.ErrorNotCentered);
                 break;
               default:
-                this.toggleState("error-other");
+                this.toggleState(BiometryOnboardingState.ErrorOther);
             }
 
             console.log("Onboarding result:", result);
           } catch (error) {
             console.error("Error onboarding face:", error);
-            this.toggleState("error-other");
+            this.toggleState(BiometryOnboardingState.ErrorOther);
           }
         } catch (error) {
           console.error("Error in toBlob callback:", error);
-          this.toggleState("error-other");
+          this.toggleState(BiometryOnboardingState.ErrorOther);
         }
       }, "image/jpeg");
     } catch (error) {
       console.error("Error capturing photo:", error);
-      this.toggleState("error-other");
+      this.toggleState(BiometryOnboardingState.ErrorOther);
     }
   }
 }

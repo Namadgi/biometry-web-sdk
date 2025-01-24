@@ -1,3 +1,17 @@
+export enum BiometryAttributes {
+  ApiKey = 'api-key',
+  UserFullname = 'user-fullname',
+}
+
+export enum BiometryOnboardingState {
+  Loading = 'loading',
+  Success = 'success',
+  ErrorNoFace = 'error-no-face',
+  ErrorMultipleFaces = 'error-multiple-faces',
+  ErrorNotCentered = 'error-not-centered',
+  ErrorOther = 'error-other',
+}
+
 export interface ConsentResponse {
   is_consent_given: boolean;
   user_fullname: string;
@@ -7,24 +21,26 @@ export interface VoiceOnboardingResponse {
   status: "good" | "qafailed" | "enrolled";
 }
 
+type Base64String = string & { readonly __brand: unique symbol };
+
 export interface DocAuthInfo {
-  document_type: string; // e.g., National Identification Card
-  country_code: string; // e.g., KGZ
-  nationality_code: string; // e.g., KGZ
-  nationality_name: string; // e.g., KYRGYZSTANI
-  sex: string; // e.g., MALE
-  first_name: string; // e.g., John
-  father_name: string; // e.g., Yohan
-  last_name: string; // e.g., Doe
-  expiry_date: string; // e.g., 2028-08-01
-  document_number: string; // e.g., ID0654321
-  birth_date: string; // e.g., 1990-01-01
-  portrait_photo: string; // Base64 string
-  signature: string; // Base64 string
-  document_category: string; // e.g., National Identification Card
-  issuing_state: string; // e.g., Not available
-  front_document_type_id: string; // e.g., KGZID0123A
-  contains_rfid: boolean; // true/false
+  document_type: string;
+  country_code: string;
+  nationality_code: string;
+  nationality_name: string;
+  sex: string;
+  first_name: string;
+  father_name: string;
+  last_name: string;
+  expiry_date: string;
+  document_number: string;
+  birth_date: string;
+  portrait_photo: Base64String;
+  signature: Base64String;
+  document_category: string;
+  issuing_state: string;
+  front_document_type_id: string;
+  contains_rfid: boolean;
   errors?: string[]; // List of error messages, if any
 }
 
@@ -33,7 +49,9 @@ export interface FaceOnboardingResponse {
     onboard_result: FaceOnboardingResult;
     document_auth?: DocAuthInfo;
   },
-  message: string;
+  message?: string;
+  error?: string;
+  scoring_result?: string;
 }
 
 export interface FaceOnboardingResult {
