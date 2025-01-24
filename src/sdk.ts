@@ -2,7 +2,7 @@ import { ConsentResponse, FaceMatchResponse, FaceOnboardingResponse, VoiceOnboar
 
 export class BiometrySDK {
   private apiKey: string;
-  private static readonly BASE_URL: string = 'https://dev-console.biometrysolutions.com';
+  private static readonly BASE_URL: string = 'https://api.biometrysolutions.com';
 
   constructor(apiKey: string) {
     if (!apiKey) {
