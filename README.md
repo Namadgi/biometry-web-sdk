@@ -1,14 +1,16 @@
 # biometry-web-sdk
 
 ## Overview
-The `biometry-web-sdk` is a software development kit (SDK) designed to facilitate the integration of Biometry's API services.
+The **Biometry Web SDK** is a software development kit (SDK) designed to facilitate the integration of Biometry's API services.
 
 ## Features
-- Consent management (For storing facial and audio biometric data)
-- Voice onboarding
-- Face onboarding
-- Face match
-- Process video
+- **Consent management**: Ask a permission to store their biometric data for authentication using Biometry.
+- **Voice onboarding**: Onboard voice for Voice Recognition.
+- **Face onboarding**: Onboard face for face recognition.
+  - Includes a customizable **Face Onboarding UI Component** for streamlined user interactions.
+- **Face match**: Compares extracted image from user’s personal document with the frame from the `/process-video.`
+- **Process video**: Process the video through Biometry services to check liveness and authorize user.
+  - (UI Component for this feature coming soon)
 
 ## Installation
 ```bash
@@ -33,10 +35,53 @@ console.log(response);
 
 You can find an example in the example/ directory. The example demonstrates how to integrate the SDK into a React app.
 
-### License
+## UI Components
+The **Biometry Web SDK** includes reusable and customizable web components for key features. These components make it simple to add biometric functionalities to your application.
+
+### Face Onboarding Component
+The `Face Onboarding` component provides an intuitive interface for onboarding users with their camera. It integrates with the `BiometrySDK` to handle backend communication and error states.
+
+#### Usage
+Here's how to integrate the `Face Onboarding` component into your application:
+
+**Import in your html component:**
+```html
+<script type="module" src="node_modules/biometry-sdk/dist/components/biometry-onboarding.js"></script>
+```
+
+**Basic Usage**
+```html
+<biometry-onboarding
+  api-key="your-api-key"
+  user-fullname="John Doe">
+</biometry-onboarding>
+```
+
+**Advanced Usage**
+```html
+<biometry-onboarding
+  api-key="your-api-key"
+  user-fullname="Jane Doe">
+  
+  <video slot="video" autoplay playsinline style="width: 100%; border-radius: 10px;"></video>
+  <button slot="button" style="padding: 10px 20px; font-size: 16px;">Capture</button>
+  
+  <!-- Custom Status Messages -->
+  <div slot="loading">Please wait while we process your photo...</div>
+  <div slot="success">Congratulations! You have been onboarded.</div>
+  <div slot="error-no-face">No face detected. Make sure your face is visible.</div>
+  <div slot="error-multiple-faces">Multiple faces detected. Please try again alone.</div>
+  <div slot="error-not-centered">Align your face with the center of the screen.</div>
+  <div slot="error-other">Oops! Something went wrong. Please try again.</div>
+</biometry-onboarding>
+```
+
+### Process Video Component
+
+## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
-### More Information
+## More Information
 
 For more detailed documentation on the Biometry API, visit the [official documentation](https://developer.biometrysolutions.com/overview/).
