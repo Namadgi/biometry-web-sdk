@@ -1,4 +1,4 @@
-# biometry-web-sdk
+# biometry-sdk
 
 ## Overview
 The **Biometry Web SDK** is a software development kit (SDK) designed to facilitate the integration of Biometry's API services.
@@ -41,13 +41,34 @@ The **Biometry Web SDK** includes reusable and customizable web components for k
 ### Face Onboarding Component
 The `Face Onboarding` component provides an intuitive interface for onboarding users with their camera. It integrates with the `BiometrySDK` to handle backend communication and error states.
 
-#### Usage
+### Integration
 Here's how to integrate the `Face Onboarding` component into your application:
 
-**Import in your html component:**
-```html
-<script type="module" src="node_modules/biometry-sdk/dist/components/biometry-onboarding.js"></script>
+**Option 1: Using npm (Recommended for full SDK usage)**
+1. Install the SDK package via **npm**:
+```bash
+npm install biometry-sdk
 ```
+2. Import the component in your **index.js** or equivalent JavaScript file:
+```javascript
+// index.js
+import './node_modules/biometry-sdk/dist/components/biometry-onboarding.js';
+```
+3. Connect the script to your **HTML file** and use the component:
+```html
+<script type="module" src="./index.js"></script>
+```
+
+
+**Option 2: Using CDN (Quick Integration)**
+```html
+<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/components/biometry-onboarding.js"></script>
+```
+
+### Usage
+The `api-key` and `user-fullname` attributes are required for the component to function.
+
+Custom slots allow you to style and customize UI elements, loading, success, and error states.
 
 **Basic Usage**
 ```html
@@ -77,6 +98,7 @@ Here's how to integrate the `Face Onboarding` component into your application:
 ```
 
 ### Process Video Component
+Coming soon...
 
 ## License
 
