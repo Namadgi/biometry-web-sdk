@@ -14,21 +14,20 @@ export class ProcessVideoComponent extends HTMLElement {
 
   private videoElement!: HTMLVideoElement;
   private fileInput!: HTMLInputElement;
-  private phraseInput!: HTMLInputElement;
   private recordButton!: HTMLButtonElement;
   private stopButton!: HTMLButtonElement;
+  private submitButton!: HTMLButtonElement;
 
   private errorState: string | null = null;
   private timeLimit: number = 30;
 
-  constructor(sdk: any, phraseGenerator?: () => string) {
+  constructor() {
     super();
-
-    this.phrase = phraseGenerator ? phraseGenerator() : this.generateDefaultPhrase();
-
-    // Attach shadow DOM, SDK and UI
+  
+    this.phrase = this.generateDefaultPhrase();
+  
+    // Attach shadow DOM and initialize UI
     this.attachShadow({ mode: 'open' });
-
     this.apiKey = this.getAttribute('api-key');
     this.initializeSDK();
     this.initializeUI();
@@ -70,6 +69,11 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 
   initializeUI() {
+    const phraseDisplay = this.phrase
+      .split("")
+      .map((digit) => `<span class="digit">${digit}</span>`)
+      .join(" ");
+
     this.shadowRoot!.innerHTML = `
     <style>
       :host {
@@ -120,16 +124,6 @@ export class ProcessVideoComponent extends HTMLElement {
         border-radius: var(--border-radius);
       }
 
-      button {
-        background-color: var(--button-bg);
-        color: var(--button-text-color);
-        border: none;
-        border-radius: var(--border-radius);
-        padding: var(--button-padding);
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-      }
-
       input[type="text"], input[type="file"] {
         padding: var(--button-padding);
         border: 1px solid var(--input-border-color);
@@ -147,30 +141,33 @@ export class ProcessVideoComponent extends HTMLElement {
         display: none;
       }
 
-      .message {
-        padding: var(--spacing);
-        border-radius: var(--border-radius);
-        font-size: 14px;
+      .phrase-display {
+        font-size: 24px;
+        font-weight: bold;
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+      .digit {
+        padding: 4px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        text-align: center;
+        width: 24px;
       }
 
-      .message.success {
-        color: #155724;
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-      }
-
-      .message.error {
-        color: #721c24;
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-      }
     </style>
     <div class="container">
       <slot name="video">
         <div class="video-wrapper">
           <video id="video-preview" muted autoplay></video>
           <div id="timer-overlay" class="hidden">00:00</div>
-      </div>
+        </div>
+      </slot>
+      <slot name="phrase-display">
+        <div class="phrase-display">
+          ${phraseDisplay}
+        </div>
       </slot>
       <slot name="record-button">
         <button id="record-button">Start Recording</button>
@@ -180,9 +177,6 @@ export class ProcessVideoComponent extends HTMLElement {
       </slot>
       <slot name="file-input">
         <input type="file" accept="video/*" id="file-input" />
-      </slot>
-      <slot name="phrase-input">
-        <input type="text" id="phrase-input" value="${this.phrase}" placeholder="Enter your phrase" />
       </slot>
       <slot name="submit-button">
         <button id="submit-button">Submit Video</button>
@@ -198,55 +192,45 @@ export class ProcessVideoComponent extends HTMLElement {
       </slot>
     </div>
     `;
-    this.videoElement = this.shadowRoot!.querySelector('#video-preview') as HTMLVideoElement;
-    this.fileInput = this.shadowRoot!.querySelector('#file-input') as HTMLInputElement;
-    this.phraseInput = this.shadowRoot!.querySelector('#phrase-input') as HTMLInputElement;
-    
-    const recordButtonSlot = this.shadowRoot!.querySelector('slot[name="record-button"]') as HTMLSlotElement;
-    const stopButtonSlot = this.shadowRoot!.querySelector('slot[name="stop-button"]') as HTMLSlotElement;
-
-    this.recordButton = this.getSlotButton(recordButtonSlot, 'record-button');
-    this.stopButton = this.getSlotButton(stopButtonSlot, 'stop-button');
-
-    this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
-    this.phraseInput.addEventListener('input', (e) => {
-      this.phrase = (e.target as HTMLInputElement).value;
-    });
-
-    this.attachSlotListeners('record-button', 'click', () => this.startRecording());
-    this.attachSlotListeners('stop-button', 'click', () => this.stopRecording());
-    this.attachSlotListeners('submit-button', 'click', () => this.handleSubmit());
+    this.attachSlotListeners();
     this.setupPreview();
     this.toggleState(null);
   }
 
-  private getSlotButton(slot: HTMLSlotElement, buttonId: string): HTMLButtonElement {
-    const assignedNodes = slot.assignedElements();
-    if (assignedNodes.length > 0) {
-        return assignedNodes[0] as HTMLButtonElement;
-    } else {
-        return this.shadowRoot!.querySelector(`#${buttonId}`) as HTMLButtonElement;
+  private attachSlotListeners(): void {
+    const videoSlot = this.shadowRoot!.querySelector('slot[name="video"]') as HTMLSlotElement;
+    const recordButtonSlot = this.shadowRoot!.querySelector('slot[name="record-button"]') as HTMLSlotElement;
+    const stopButtonSlot = this.shadowRoot!.querySelector('slot[name="stop-button"]') as HTMLSlotElement;
+    const fileInputSlot = this.shadowRoot!.querySelector('slot[name="file-input"]') as HTMLSlotElement;
+    const submitButtonSlot = this.shadowRoot!.querySelector('slot[name="submit-button"]') as HTMLSlotElement;
+
+    this.videoElement = this.getSlotElement(videoSlot, '#video-preview', HTMLVideoElement);
+    this.recordButton = this.getSlotElement(recordButtonSlot, '#record-button', HTMLButtonElement);
+    this.stopButton = this.getSlotElement(stopButtonSlot, '#stop-button', HTMLButtonElement);
+    this.fileInput = this.getSlotElement(fileInputSlot, '#file-input', HTMLInputElement);
+    this.submitButton = this.getSlotElement(submitButtonSlot, '#submit-button', HTMLButtonElement);
+
+    if (this.fileInput) {
+        this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+    }
+    if (this.recordButton) {
+      this.recordButton.addEventListener("click", () => this.startRecording());
+    }
+    if (this.stopButton) {
+      this.stopButton.addEventListener("click", () => this.stopRecording());
+    }
+    if (this.submitButton) {
+      this.submitButton.addEventListener("click", () => this.handleSubmit())
     }
   }
 
-  attachSlotListeners(slotName: string, event: string, callback: EventListener) {
-    const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLSlotElement;
-  
-    if (slot) {
-      const updateListeners = () => {
-        const assignedNodes = slot.assignedElements();
-        if (assignedNodes.length > 0) {
-          // Remove listeners from previous elements
-          assignedNodes.forEach((node) => {
-            node.removeEventListener(event, callback);
-            node.addEventListener(event, callback);
-          });
-        }
-      };
-  
-      slot.addEventListener('slotchange', updateListeners);
-      updateListeners();
-    }
+  private getSlotElement<T extends HTMLElement>(
+    slot: HTMLSlotElement,
+    fallbackSelector: string,
+    elementType: { new (): T }
+  ): T {
+    const assignedElements = slot.assignedElements();
+    return (assignedElements.length > 0 ? assignedElements[0] : null) as T || this.shadowRoot!.querySelector(fallbackSelector) as T;
   }
 
   replaceSlotContent(slotName: string, content: string | HTMLElement) {
@@ -282,6 +266,18 @@ export class ProcessVideoComponent extends HTMLElement {
     });
   }
 
+  private convertPhraseToWords(phrase: string): string {
+    const digitWords = [
+      "zero", "one", "two", "three", "four",
+      "five", "six", "seven", "eight", "nine"
+    ];
+  
+    return phrase
+      .split("")
+      .map((digit) => digitWords[parseInt(digit, 10)])
+      .join(" ");
+  }
+
   private async setupPreview() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -313,6 +309,7 @@ export class ProcessVideoComponent extends HTMLElement {
       this.stopRecording();
     }, this.timeLimit * 1000);
   }
+
   private async stopTimer() {
     if (this.recordingTimeout) {
       clearTimeout(this.recordingTimeout);
@@ -444,7 +441,8 @@ export class ProcessVideoComponent extends HTMLElement {
     this.toggleState('loading');
 
     try {
-      const result = await this.sdk.processVideo(this.videoFile, this.phrase, this.userFullname);
+      const phraseInWords = this.convertPhraseToWords(this.phrase);
+      const result = await this.sdk.processVideo(this.videoFile, phraseInWords, this.userFullname);
       console.log('Response from processVideo:', result);
       this.toggleState('success');
     } catch (error) {
@@ -475,11 +473,6 @@ export class ProcessVideoComponent extends HTMLElement {
 
   get currentPhrase(): string {
     return this.phrase;
-  }
-
-  set currentPhrase(newPhrase: string) {
-    this.phrase = newPhrase;
-    this.phraseInput.value = newPhrase;
   }
 
   get videoDuration(): number | null {
