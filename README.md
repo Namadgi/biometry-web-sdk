@@ -98,7 +98,76 @@ Custom slots allow you to style and customize UI elements, loading, success, and
 ```
 
 ### Process Video Component
-Coming soon...
+The Process Video component allows developers to record, upload, and process video directly within their applications through Biometry services to check liveness and authorize user.
+
+### Integration
+**Option 1: Install via npm**
+
+1. To include the component in your project, install the biometry-sdk package:
+```bash
+npm install biometry-sdk
+```
+
+2. After installation, import the component into your project:
+```javascript
+// index.js
+import './node_modules/biometry-sdk/dist/components/process-video.js';
+```
+
+3. Include the component in your HTML:
+```html
+<script type="module" src="./index.js"></script>
+<process-video ...></process-video>
+```
+
+**Option 2: Import directly via CDN**
+
+You can skip the npm installation and include the component directly in your HTML:
+```html
+<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/components/process-video.js"></script>
+<process-video ...></process-video>
+```
+
+### Usage
+
+**Basic Usage**
+```html
+<process-video
+  api-key="your-api-key"
+  user-fullname="Lionel Messi"
+></process-video>
+```
+
+**Advanced Usage**
+```html
+<process-video
+  api-key="eyJhb...apikey"
+  user-fullname="John Doe Uulu"
+>
+  <!-- Custom video element -->
+  <video slot="video" muted playsinline style="border-radius: 1rem;"></video>
+
+  <!-- Custom buttons -->
+  <button slot="record-button">Custom Record</button>
+  <button slot="stop-button">Custom Stop</button>
+  
+  <!-- Custom file input -->
+  <input slot="file-input" type="file" accept="video/*" />
+
+  <!-- Custom submit button -->
+  <button slot="submit-button">Custom Submit</button>
+
+  <!-- Custom messages -->
+  <div slot="loading">Processing...</div>
+  <div slot="error">An error occurred. Please try again.</div>
+  <div slot="success">Video submitted successfully!</div>
+</process-video>
+```
+
+**Notes**
+- By default, all elements are functional without customization. Replace slots only if customization is required.
+
+- To regenerate the video preview or handle custom actions, use JavaScript to interact with the provided slots or the component's public methods.
 
 ## License
 
