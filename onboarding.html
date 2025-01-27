@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biometry Onboarding</title>
+
+  <style>
+    /* Wrapper styles for alignment */
+    .biometry-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    /* Rounded camera styles */
+    video {
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      border: 4px solid #007BFF;
+      object-fit: cover;
+      transform: scaleX(-1);
+      /* Mirror the camera for a selfie-like experience */
+    }
+
+    /* Capture button styles */
+    button {
+      background-color: #007BFF;
+      color: white;
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    button:focus {
+      outline: 2px solid #0056b3;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Biometry Onboarding Example</h1>
+  <biometry-onboarding
+    api-key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkOThmNDNjMy0wZTkzLTQwNWYtOTIwZS1iZWVhYTE3NjcwNWIiLCJpYXQiOjE3MzY1MDk2MjUsImlzcyI6ImJpb21ldHJ5LXByb2plY3RzIiwidXNlcl9pZCI6IjFlNThhNjMzLTQzOWQtNGFiMy1iNDgzLWIyZmIxOTI4NmY2YiIsInByb2plY3RfaWQiOiJiZDJjNzQ4MS02ZGM4LTQzNDQtOTY1Ni0wNWU4ZDI3MjY3ZWQiLCJzZWxlY3RlZF9zZXJ2aWNlcyI6WyJBY3RpdmUgU3BlYWtlciBEZXRlY3Rpb24iLCJWaXN1YWwgU3BlZWNoIFJlY29nbml0aW9uIiwiRmFjZSBMaXZlbmVzcyBEZXRlY3Rpb24iLCJWb2ljZSBSZWNvZ25pdGlvbiIsIkZhY2UgUmVjb2duaXRpb24iXX0.puaMPsKGBla5Oii_NlJmyQ_jwvc-EaY7PSaRSLcVeok"
+    user-fullname="Zhakshylyk Kalysbek uulu">
+    <video slot="video" autoplay playsinline></video>
+    <canvas slot="canvas" style="display: none;"></canvas>
+    <button slot="button">Capture Photo</button>
+
+    <div slot="loading">Loading...</div>
+    <div slot="success">Onboarding Successful!</div>
+    <div slot="error-no-face">No face detected or quality is too low.</div>
+    <div slot="error-multiple-faces">Multiple faces detected. Please try again.</div>
+    <div slot="error-not-centered">Face is not centered. Please adjust and try again.</div>
+    <div slot="error-other">An unexpected error occurred. Please try again.</div>
+  </biometry-onboarding>
+
+  <script src="src/components/biometry-onboarding.js"></script>
+</body>
+
+</html>
