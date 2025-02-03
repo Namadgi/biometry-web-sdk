@@ -417,6 +417,11 @@ export class ProcessVideoComponent extends HTMLElement {
     this.videoElement.play();
     this.videoElement.muted = false;
     this.stopTimer();
+
+    // Clean up the object URL when the video loads
+    this.videoElement.onloadeddata = () => {
+      URL.revokeObjectURL(videoURL);
+    };
   }
 
   private handleFileUpload(event: Event) {
