@@ -317,15 +317,15 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   ```
 - **Voice Onboarding**:
   ```javascript
-  sdk.enrollVoice(file, userFullName)
+  sdk.onbaordVoice(file, userFullName)
   ```
 - **Face Onboarding**:
   ```javascript
-  sdk.enrollFace(file, userFullName)
+  sdk.onboardFace(file, userFullName)
   ```
 - Face match
   ```javascript
-  sdk.faceMatch(documentFaceData, userFaceData, userFullName, { ...options });
+  sdk.faceMatch(image, video, userFullName, { ...options });
   ```
 - Process Video (basic):
   ```javascript
