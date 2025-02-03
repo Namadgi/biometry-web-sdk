@@ -128,7 +128,7 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
 - `usePrefilledVideo`: When set to `true`, indicates that the SDK should reuse the video already on file from a previous `processVideo` call rather than requiring a new upload.
 Example:
   ```javascript
-  const { x-request-id } = await sdk.processVideo(videoFile, phrase, userFullName);
+  const { requestId } = await sdk.processVideo(videoFile, phrase, userFullName);
   
   // Later on, we can reuse that video for face match or advanced checks
   const faceMatchResp = await sdk.faceMatch(null, null, userFullName, {
