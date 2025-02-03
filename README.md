@@ -10,8 +10,8 @@ The **Biometry Web SDK** is a software development kit designed to simplify the 
   - [Face Onboarding](#2-face-onboarding)
   - [Voice Onboarding](#3-voice-onboarding)
   - [Process Video](#4-process-video)
-- [Advanced Usage & Best Practices](#advanced-usage-and-best-practices)
-  - [Typical docAuth and FaceMatch Flow](#typical-docAuth-and-faceMatch-flow)
+- [Advanced Usage And Best Practices](#advanced-usage-and-best-practices)
+  - [Typical FaceMatch Flow](#typical-facematch-flow)
   - [Use Cases with processVideoRequestId and usePrefilledVideo](#use-cases-with-processVideoRequestId-and-usePrefilledVideo)
   - [Error Handling](#error-handling)
   - [Security And Privacy Considerations](#security-and-privacy-considerations)
@@ -89,10 +89,10 @@ Process a user’s video for liveness checks and identity authorization:
   }
   ```
 ## Advanced Usage And Best Practices
-### Typical docAuth and FaceMatch Flow
-One common advanced scenario involves document authentication (docAuth) and face matching:
-1. docAuth: The user uploads a picture of their identity document (front side with the face).
-2. Face Onboarding or Process Video: Capture the user’s live face.
+### Typical FaceMatch Flow
+One common advanced scenario involves document authentication in onboarding face and face matching:
+1. Face Onboarding: Capture the user’s live face or the user uploads a picture of their identity document (front side with the face)
+2. Process Video: Capture the user’s live face
 3. Face Match: Compare the extracted face from the document with the user’s live face to verify identity.
 
 Below is a possible flow (method names in your SDK may vary slightly depending on your integration setup):
@@ -100,39 +100,33 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   // 1. Acquire user consent
   await sdk.giveConsent(true, userFullName);
   
-  // 2. User uploads or captures their ID document
-  const docFile = new File([/* document bytes */], 'document.jpg', { type: 'image/jpeg' });
-  const docAuthResponse = await sdk.docAuth(docFile, userFullName);
-  
-  // 3. Onboard or capture the user’s live face
+  // 2. Onboard or capture the user’s face
   //    (Either using onboardFace or processVideo, depending on your user flow)
-  const userFaceFile = new File([/* user selfie bytes */], 'selfie.jpg', { type: 'image/jpeg' });
+  const userFaceFile = new File([/* user selfie bytes */], 'image.jpg', { type: 'image/jpeg' });
+  const userVideoFile = new File([/* user selfie bytes */], 'video.mp4', { type: 'video/*' });
   const onboardResponse = await sdk.onboardFace(userFaceFile, userFullName);
   
-  // 4. Face Match (Compare doc face with user’s onboarded face)
+  // 4. Face Match (Compare video face with user’s onboarded face)
   const faceMatchResponse = await sdk.faceMatch(
-    docAuthResponse.extractedFace,
     userFaceFile,
+    userVideoFile,
     userFullName
   );
   
   // 5. Evaluate the faceMatch result
   if (faceMatchResponse.matchResult === 'match') {
-    console.log('User doc face matches user’s live face. Identity verified!');
+    console.log('User video face matches user’s live face. Identity verified!');
   } else {
-    console.log('User doc face does NOT match. Additional verification needed.');
+    console.log('User video face does NOT match. Additional verification needed.');
   }
   ```
-**Notes:**
-- The `docAuth` method name may differ depending on your specific implementation. Some integrations do the doc face extraction automatically, while others provide a separate endpoint.
-- `extractedFace` in `docAuthResponse` can be a reference (like an ID) or raw data. Confirm your exact API response structure to properly pass it to `faceMatch`.
 
 ### Use Cases with processVideoRequestId and usePrefilledVideo
-- `processVideoRequestId`: After calling `sdk.processVideo()`, you typically receive a unique ID (`requestId`). You can pass this `processVideoRequestId` into subsequent calls (e.g., `faceMatch`) to reference the previously uploaded video frames.
+- `processVideoRequestId`: After calling `sdk.processVideo()`, you typically receive a unique ID (`x-request-id`). You can pass this `processVideoRequestId` into subsequent calls (e.g., `faceMatch`) to reference the previously uploaded video frames.
 - `usePrefilledVideo`: When set to `true`, indicates that the SDK should reuse the video already on file from a previous `processVideo` call rather than requiring a new upload.
 Example:
   ```javascript
-  const { requestId } = await sdk.processVideo(videoFile, phrase, userFullName);
+  const { x-request-id } = await sdk.processVideo(videoFile, phrase, userFullName);
   
   // Later on, we can reuse that video for face match or advanced checks
   const faceMatchResp = await sdk.faceMatch(null, null, userFullName, {
@@ -327,10 +321,6 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   ```javascript
   sdk.enrollFace(file, userFullName)
   ```
-- **docAuth** (if supported):
-  ```javascript
-  sdk.docAuth(docFile, userFullName);
-  ```
 - Face match
   ```javascript
   sdk.faceMatch(documentFaceData, userFaceData, userFullName, { ...options });
@@ -350,5 +340,5 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
 - UI Components:
   - `<biometry-onboarding ...>` (face onboarding)
   - `<process-video ...>` (video onboarding)
-With these **direct SDK methods**, **UI components**, and advanced **best practices** (docAuth + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
+With these **direct SDK methods**, **UI components**, and advanced **best practices** (faceOnboard + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
   
