@@ -1,4 +1,5 @@
 import { BiometrySDK } from "../sdk.js";
+import ysFixWebmDuration from "fix-webm-duration";
 
 export class ProcessVideoComponent extends HTMLElement {
   private sdk: any;
@@ -9,6 +10,7 @@ export class ProcessVideoComponent extends HTMLElement {
   private recordedChunks: Blob[] = [];
   private mediaRecorder: MediaRecorder | null = null;
   private videoFile: File | null = null;
+  private startTime: number = 0;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private recordingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -357,19 +359,18 @@ export class ProcessVideoComponent extends HTMLElement {
         };
 
         this.mediaRecorder.onstop = () => {
-            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-            const videoURL = URL.createObjectURL(blob);
-            this.videoFile = new File([blob], 'recorded_video.webm', { type: 'video/webm' });
-
-            this.videoElement.src = videoURL;
-            this.videoElement.controls = true;
-            this.videoElement.play();
-            this.videoElement.muted = false;
-            this.stopTimer();
+            const duration = Date.now() - this.startTime;
+            const buggyBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            
+            ysFixWebmDuration(buggyBlob, duration, {logger: false})
+              .then((fixedBlob) => {
+                this.onStopMediaRecorder(fixedBlob);
+            });
         };
 
         this.mediaRecorder.start();
         this.startTimer();
+        this.startTime = Date.now();
 
         this.recordButton.disabled = true;
         this.stopButton.disabled = false;
@@ -391,7 +392,6 @@ export class ProcessVideoComponent extends HTMLElement {
         if (this.previewStream) {
             this.previewStream.getTracks().forEach(track => track.stop());
         }
-
         this.videoElement.srcObject = null;
         this.videoElement.src = '';
         this.videoElement.controls = false;
@@ -406,6 +406,17 @@ export class ProcessVideoComponent extends HTMLElement {
     } catch (error) {
         console.error('Error stopping video recording:', error);
     }
+  }
+
+  private onStopMediaRecorder(blob: Blob) {
+    const videoURL = URL.createObjectURL(blob);
+    this.videoFile = new File([blob], 'recorded_video.webm', { type: 'video/webm' });
+
+    this.videoElement.src = videoURL;
+    this.videoElement.controls = true;
+    this.videoElement.play();
+    this.videoElement.muted = false;
+    this.stopTimer();
   }
 
   private handleFileUpload(event: Event) {

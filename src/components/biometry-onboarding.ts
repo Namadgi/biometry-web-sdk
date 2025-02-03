@@ -1,7 +1,7 @@
 import { BiometrySDK } from "../sdk.js";
 import { BiometryAttributes, BiometryOnboardingState } from "../types.js";
 
-class BiometryOnboarding extends HTMLElement {
+export class BiometryOnboarding extends HTMLElement {
   private readonly shadow: ShadowRoot;
   private sdk: BiometrySDK | null;
   private videoElement: HTMLVideoElement | null = null;
