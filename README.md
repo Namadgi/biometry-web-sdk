@@ -18,7 +18,9 @@ The **Biometry Web SDK** is a software development kit designed to simplify the 
 - [UI Components](#ui-components)
   - [Face Onboarding Component](#face-onboarding-component)
   - [Process Video Component](#process-video-component)
-
+- [License](#license)
+- [More Information](#more-information)
+- [Quick Reference](#quick-reference)
 
 ## Installation
 Install the Biometry Web SDK via npm:
@@ -106,14 +108,14 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   const userVideoFile = new File([/* user selfie bytes */], 'video.mp4', { type: 'video/*' });
   const onboardResponse = await sdk.onboardFace(userFaceFile, userFullName);
   
-  // 4. Face Match (Compare video face with user’s onboarded face)
+  // 3. Face Match (Compare video face with user’s onboarded face)
   const faceMatchResponse = await sdk.faceMatch(
     userFaceFile,
     userVideoFile,
     userFullName
   );
   
-  // 5. Evaluate the faceMatch result
+  // 4. Evaluate the faceMatch result
   if (faceMatchResponse.matchResult === 'match') {
     console.log('User video face matches user’s live face. Identity verified!');
   } else {
