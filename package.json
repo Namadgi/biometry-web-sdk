@@ -1,6 +1,6 @@
 {
   "name": "biometry-sdk",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "main": "dist/biometry-sdk.esm.js",
   "types": "dist/index.d.ts",
   "module": "dist/biometry-sdk.esm.js",
