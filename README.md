@@ -68,7 +68,7 @@ Enroll a user’s voice for future authentication checks:
   const voiceFile = new File([/* voice audio bytes */], 'voice.wav', { type: 'audio/wav' });
 
   await sdk.giveConsent(true, 'John Doe');
-  const voiceResponse = await sdk.enrollVoice(voiceFile, 'John Doe');
+  const voiceResponse = await sdk.onboardVoice(voiceFile, 'John Doe');
   console.log('Voice Onboarding Response:', voiceResponse);
   ```
 ### 4. Process Video
