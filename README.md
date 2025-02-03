@@ -128,7 +128,7 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
 - `usePrefilledVideo`: When set to `true`, indicates that the SDK should reuse the video already on file from a previous `processVideo` call rather than requiring a new upload.
 Example:
   ```javascript
-  const { x-request-id } = await sdk.processVideo(videoFile, phrase, userFullName);
+  const { requestId } = await sdk.processVideo(videoFile, phrase, userFullName);
   
   // Later on, we can reuse that video for face match or advanced checks
   const faceMatchResp = await sdk.faceMatch(null, null, userFullName, {
@@ -178,11 +178,12 @@ This component provides an intuitive interface for onboarding users with their c
 2. Import the component in your **index.js** or equivalent JavaScript file:
     ```javascript
     // index.js
-    import './node_modules/biometry-sdk/dist/components/biometry-onboarding.js';
+    import './node_modules/biometry-sdk/dist/biometry-sdk.esm.js';
     ```
 3. Connect the script to your **HTML file** and use the component:
     ```html
     <script type="module" src="./index.js"></script>
+    
     <biometry-onboarding
       api-key="your-api-key"
       user-fullname="John Doe">
@@ -191,7 +192,8 @@ This component provides an intuitive interface for onboarding users with their c
     
 **Option 2: Using CDN (Quick Integration)**
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/components/biometry-onboarding.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/biometry-sdk.esm.js"></script>
+
 <biometry-onboarding
   api-key="your-api-key"
   user-fullname="John Doe">
@@ -220,7 +222,7 @@ This component provides an intuitive interface for onboarding users with their c
 ```html
 <biometry-onboarding
   api-key="your-api-key"
-  user-fullname="Jane Doe">
+  user-fullname="John Doe">
   
   <video slot="video" autoplay playsinline style="width: 100%; border-radius: 10px;"></video>
   <button slot="button" style="padding: 10px 20px; font-size: 16px;">Capture</button>
@@ -247,17 +249,20 @@ The **Process Video** component enables you to record, upload, and process a vid
 2. After installation, import the component into your project:
    ```javascript
     // index.js
-    import './node_modules/biometry-sdk/dist/components/process-video.js'
+    import './node_modules/biometry-sdk/dist/biometry-sdk.esm.js';
     ```
 3. Include the component in your HTML:
-   You can skip the npm installation and include the component directly in your HTML:
    ```html
     <script type="module" src="./index.js"></script>
+    
     <process-video ...></process-video>
    ```
 **Option 2: Using CDN (Quick Integration)**
+
+You can skip the npm installation and include the component directly in your HTML:
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/components/process-video.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/biometry-sdk.esm.js"></script>
+
 <process-video ...></process-video>
 ```
 ### Usage
@@ -265,7 +270,7 @@ The **Process Video** component enables you to record, upload, and process a vid
 ```html
 <process-video
   api-key="your-api-key"
-  user-fullname="Lionel Messi"
+  user-fullname="John Doe"
 ></process-video>
 ```
 
@@ -273,7 +278,7 @@ The **Process Video** component enables you to record, upload, and process a vid
 ```html
 <process-video
   api-key="eyJhb...apikey"
-  user-fullname="John Doe Uulu"
+  user-fullname="John Doe"
 >
   <!-- Custom video element -->
   <video slot="video" muted playsinline style="border-radius: 1rem;"></video>
@@ -317,21 +322,21 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   ```
 - **Voice Onboarding**:
   ```javascript
-  sdk.onbaordVoice(file, userFullName)
+  sdk.onboardVoice(file, userFullName)
   ```
 - **Face Onboarding**:
   ```javascript
   sdk.onboardFace(file, userFullName)
   ```
-- Face match
+- **Face match**
   ```javascript
   sdk.faceMatch(image, video, userFullName, { ...options });
   ```
-- Process Video (basic):
+- **Process Video (basic):**
   ```javascript
   sdk.processVideo(file, phrase, userFullName);
   ```
-- Process Video (advanced w/ reusing video or linking IDs):
+- **Process Video (advanced w/ reusing video or linking IDs):**
   ```javascript
   sdk.processVideo(null, phrase, userFullName, {
   usePrefilledVideo: true,
@@ -339,7 +344,7 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   requestUserProvidedId: 'YOUR_CUSTOM_ID'
   });
   ```
-- UI Components:
+- **UI Components:**
   - `<biometry-onboarding ...>` (face onboarding)
   - `<process-video ...>` (video onboarding)
 With these **direct SDK methods**, **UI components**, and advanced **best practices** (faceOnboard + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
