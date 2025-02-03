@@ -10,14 +10,14 @@ The **Biometry Web SDK** is a software development kit designed to simplify the 
   - [Face Onboarding](#2-face-onboarding)
   - [Voice Onboarding](#3-voice-onboarding)
   - [Process Video](#4-process-video)
-- [Advanced Usage & Best Practices](#advanced-usage-best-practices)
-  - [A Typical docAuth + FaceMatch Flow](#)
-  - [Use Cases with processVideoRequestId and usePrefilledVideo](#)
-  - [Error Handling](#)
-  - [Security & Privacy Considerations](#)
-- [UI Components](#)
-  - [Face Onboarding Component](#)
-  - [Process Video Component](#)
+- [Advanced Usage & Best Practices](#advanced-usage-and-best-practices)
+  - [Typical docAuth and FaceMatch Flow](#typical-docAuth-and-faceMatch-flow)
+  - [Use Cases with processVideoRequestId and usePrefilledVideo](#use-cases-with-processVideoRequestId-and-usePrefilledVideo)
+  - [Error Handling](#error-handling)
+  - [Security And Privacy Considerations](#security-and-privacy-considerations)
+- [UI Components](#ui-components)
+  - [Face Onboarding Component](#face-onboarding-component)
+  - [Process Video Component](#process-video-component)
 
 
 ## Installation
@@ -88,8 +88,8 @@ Process a user’s video for liveness checks and identity authorization:
     console.error('Error processing video:', error);
   }
   ```
-## Advanced Usage & Best Practices
-### A Typical docAuth + FaceMatch Flow
+## Advanced Usage And Best Practices
+### Typical docAuth and FaceMatch Flow
 One common advanced scenario involves document authentication (docAuth) and face matching:
 1. docAuth: The user uploads a picture of their identity document (front side with the face).
 2. Face Onboarding or Process Video: Capture the user’s live face.
@@ -160,7 +160,7 @@ Always wrap calls in try/catch and provide user-friendly messages or fallback lo
     console.error('Face match error:', error);
   }
   ```
-### Security & Privacy Considerations
+### Security And Privacy Considerations
 1. **Protect Your API Key:** Avoid storing your API key in client-side code if possible. Use environment variables or server-side proxies.
 2. **Obtain Explicit Consent:** Ensure you have a transparent process for obtaining and storing user consent.
 3. **Data Minimization:** Only store data that is required for your use case.
@@ -174,8 +174,6 @@ The Biometry Web SDK includes reusable, customizable web components for crucial 
 This component provides an intuitive interface for onboarding users with their cameras. It integrates directly with the `BiometrySDK backend`, managing camera capture, consent checks, and error handling.
 
 ### Integration
-Here's how to integrate the `Face Onboarding` component into your application:
-
 **Option 1: Using npm (Recommended for full SDK usage)**
 1. Install the SDK package via **npm**:
     ```bash
@@ -189,12 +187,19 @@ Here's how to integrate the `Face Onboarding` component into your application:
 3. Connect the script to your **HTML file** and use the component:
     ```html
     <script type="module" src="./index.js"></script>
+    <biometry-onboarding
+      api-key="your-api-key"
+      user-fullname="John Doe">
+    </biometry-onboarding>
     ```
-
-
+    
 **Option 2: Using CDN (Quick Integration)**
 ```html
 <script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/components/biometry-onboarding.js"></script>
+<biometry-onboarding
+  api-key="your-api-key"
+  user-fullname="John Doe">
+</biometry-onboarding>
 ```
 
 ### Usage
@@ -203,7 +208,7 @@ Here's how to integrate the `Face Onboarding` component into your application:
 - `user-fullname`: The user’s full name (used in data storage and consent).
 
 **Slots:**
-- `video`: Your custom <video> element.
+- `video`: Your custom `<video>` element.
 - `button`: Custom capture button.
 - `loading`, `success`, `error-no-face`, `error-multiple-faces`, `error-not-centered`, `error-other`: Custom UI messages for different states.
 
@@ -297,20 +302,6 @@ The **Process Video** component enables you to record, upload, and process a vid
 - All default elements and messages are functional out-of-the-box.
 - Replace slots if you want to customize the UI or functionality.
 - Call giveConsent() before using any biometric methods to ensure compliance with data processing requirements.
-
-## Best Practices
-1. **Always Acquire Consent**
-   - Before performing Face Onboarding or Process Video, you can call:
-     ```javascript
-      sdk.giveConsent(true, userFullName);
-     ```
-   - Or directly send a request to the `/consent` in the [official documentation](https://developer.biometrysolutions.com/overview/).
-   
-   This ensures legal compliance and user awareness when storing and processing biometric data.
-3. **Handle Errors Gracefully**
-   - The SDK methods throw errors if something goes wrong (e.g., network, permission, or detection errors). Use try/catch or .catch() to handle them.
-4. **Security**
-   - Protect your API key. Avoid exposing it in public repositories or client-side code if possible.
    
 ## License
 
@@ -320,8 +311,44 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 For more detailed information on Biometry’s API endpoints, parameters, and responses, visit the official [Biometry API Documentation](https://developer.biometrysolutions.com/overview/). If you have questions or need help, please reach out to our support team or create a GitHub issue.
 
 ## Quick Reference
-- Install: `npm install biometry-sdk`
-- Consent: `sdk.giveConsent(true, userFullName)` (Required before onboarding/processing)
-- Voice Onboarding: `sdk.enrollVoice(file, userFullName)`
-- Face Onboarding: `sdk.enrollFace(file, userFullName)`
-- Process Video: `sdk.processVideo(file, phrase, userFullName)`
+- **Install**:
+  ```bash
+  npm install biometry-sdk
+  ```
+- **Consent**: (Required before onboarding/processing)
+  ```javascript
+  sdk.giveConsent(true, userFullName)
+  ```
+- **Voice Onboarding**:
+  ```javascript
+  sdk.enrollVoice(file, userFullName)
+  ```
+- **Face Onboarding**:
+  ```javascript
+  sdk.enrollFace(file, userFullName)
+  ```
+- **docAuth** (if supported):
+  ```javascript
+  sdk.docAuth(docFile, userFullName);
+  ```
+- Face match
+  ```javascript
+  sdk.faceMatch(documentFaceData, userFaceData, userFullName, { ...options });
+  ```
+- Process Video (basic):
+  ```javascript
+  sdk.processVideo(file, phrase, userFullName);
+  ```
+- Process Video (advanced w/ reusing video or linking IDs):
+  ```javascript
+  sdk.processVideo(null, phrase, userFullName, {
+  usePrefilledVideo: true,
+  processVideoRequestId: 'YOUR_REQUEST_ID',
+  requestUserProvidedId: 'YOUR_CUSTOM_ID'
+  });
+  ```
+- UI Components:
+  - `<biometry-onboarding ...>` (face onboarding)
+  - `<process-video ...>` (video onboarding)
+With these **direct SDK methods**, **UI components**, and advanced **best practices** (docAuth + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
+  
