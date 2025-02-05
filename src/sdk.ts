@@ -62,7 +62,7 @@ export class BiometrySDK {
     };
 
     const response = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
-      '/consent',
+      '/api-consent/consent',
       'POST',
       body
     );
