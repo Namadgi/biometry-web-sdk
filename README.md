@@ -12,7 +12,6 @@ The **Biometry Web SDK** is a software development kit designed to simplify the 
   - [Process Video](#4-process-video)
 - [Advanced Usage And Best Practices](#advanced-usage-and-best-practices)
   - [Typical FaceMatch Flow](#typical-facematch-flow)
-  - [Use Cases with processVideoRequestId and usePrefilledVideo](#use-cases-with-processVideoRequestId-and-usePrefilledVideo)
   - [Error Handling](#error-handling)
   - [Security And Privacy Considerations](#security-and-privacy-considerations)
 - [UI Components](#ui-components)
@@ -84,11 +83,44 @@ Process a user’s video for liveness checks and identity authorization:
     const response = await sdk.processVideo(videoFile, phrase, userFullName);
     console.log('Process Video Response:', response);
   
-    // The response headers or body may include a processVideoRequestId (for reuse).
-    const { requestId: processVideoRequestId } = response;
+    // Retrieve the processVideoRequestId from the *response headers* called x-request-id.
   } catch (error) {
     console.error('Error processing video:', error);
   }
+  ```
+#### Additional
+- `processVideoRequestId`: After calling `sdk.processVideo()`, you typically receive a unique ID (`x-request-id`). You can pass this `processVideoRequestId` into subsequent calls (e.g., `faceMatch`) to reference the previously uploaded video frames.
+- `usePrefilledVideo`: When set to `true`, indicates that the SDK should reuse the video already on file from a previous `processVideo` call rather than requiring a new upload.
+### 5. Face match
+Use matchFaces to compare a reference image (e.g., a document or a captured selfie) with a face from a video:
+  ```javascript
+    /**
+   * matchFaces(
+   *   image: File,
+   *   video?: File,
+   *   userFullName?: string,
+   *   processVideoRequestId?: string,
+   *   usePrefilledVideo?: boolean,
+   *   requestUserProvidedId?: string
+   * ): Promise<FaceMatchResponse>
+   */
+  const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
+  const videoFile = new File([/* file parts */], 'video.mp4', { type: 'video/mp4' });
+  const userFullName = 'John Doe';
+
+  const faceMatchResponse = await sdk.faceMatch(
+    faceFile,
+    videoFile,
+    userFullName
+  );
+  // OR
+  const faceMatchResponse = await sdk.faceMatch(
+    faceFile,              // The image containing the user's face (doc or selfie)
+    null,                  // No local video provided (we're reusing the old one)
+    'John Doe',
+    processVideoRequestId, // From the /process-video response headers
+    true                   // usePrefilledVideo
+  );
   ```
 ## Advanced Usage And Best Practices
 ### Typical FaceMatch Flow
@@ -123,20 +155,6 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   }
   ```
 
-### Use Cases with processVideoRequestId and usePrefilledVideo
-- `processVideoRequestId`: After calling `sdk.processVideo()`, you typically receive a unique ID (`x-request-id`). You can pass this `processVideoRequestId` into subsequent calls (e.g., `faceMatch`) to reference the previously uploaded video frames.
-- `usePrefilledVideo`: When set to `true`, indicates that the SDK should reuse the video already on file from a previous `processVideo` call rather than requiring a new upload.
-Example:
-  ```javascript
-  const { requestId } = await sdk.processVideo(videoFile, phrase, userFullName);
-  
-  // Later on, we can reuse that video for face match or advanced checks
-  const faceMatchResp = await sdk.faceMatch(null, null, userFullName, {
-    processVideoRequestId: requestId,
-    usePrefilledVideo: true
-  });
-  ```
-Here, `faceMatch` might not require new face data if it can extract frames from the previously uploaded video.
 ### Error Handling
 All SDK calls can throw errors for various reasons:
 - Network/Connection Issues
@@ -166,9 +184,6 @@ Always wrap calls in try/catch and provide user-friendly messages or fallback lo
 In addition to direct SDK methods, the Biometry Web SDK offers reusable Web Components that handle user interactions (camera, video recording, error states) automatically.
 The Biometry Web SDK includes reusable, customizable web components for crucial features. These components are easy to embed into your application and handle the most common biometric operations with minimal setup.
 
-### Face Onboarding Component
-This component provides an intuitive interface for onboarding users with their cameras. It integrates directly with the `BiometrySDK backend`, managing camera capture, consent checks, and error handling.
-
 ### Integration
 **Option 1: Using npm (Recommended for full SDK usage)**
 1. Install the SDK package via **npm**:
@@ -180,25 +195,13 @@ This component provides an intuitive interface for onboarding users with their c
     // index.js
     import './node_modules/biometry-sdk/dist/biometry-sdk.esm.js';
     ```
-3. Connect the script to your **HTML file** and use the component:
-    ```html
-    <script type="module" src="./index.js"></script>
-    
-    <biometry-onboarding
-      api-key="your-api-key"
-      user-fullname="John Doe">
-    </biometry-onboarding>
-    ```
-    
 **Option 2: Using CDN (Quick Integration)**
 ```html
 <script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/biometry-sdk.esm.js"></script>
-
-<biometry-onboarding
-  api-key="your-api-key"
-  user-fullname="John Doe">
-</biometry-onboarding>
 ```
+
+### Face Onboarding Component
+This component provides an intuitive interface for onboarding users with their cameras. It integrates directly with the `BiometrySDK backend`, managing camera capture, consent checks, and error handling.
 
 ### Usage
 **Required attributes:**
@@ -240,31 +243,6 @@ This component provides an intuitive interface for onboarding users with their c
 ### Process Video Component
 The **Process Video** component enables you to record, upload, and process a video within your application. It integrates with Biometry's services to check liveness and authorize the user.
 
-### Integration
-**Option 1: Install via npm**
-1. To include the component in your project, install the biometry-sdk package:
-   ```bash
-    npm install biometry-sdk
-    ```
-2. After installation, import the component into your project:
-   ```javascript
-    // index.js
-    import './node_modules/biometry-sdk/dist/biometry-sdk.esm.js';
-    ```
-3. Include the component in your HTML:
-   ```html
-    <script type="module" src="./index.js"></script>
-    
-    <process-video ...></process-video>
-   ```
-**Option 2: Using CDN (Quick Integration)**
-
-You can skip the npm installation and include the component directly in your HTML:
-```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/biometry-sdk.esm.js"></script>
-
-<process-video ...></process-video>
-```
 ### Usage
 **Basic Usage**
 ```html
@@ -328,9 +306,19 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   ```javascript
   sdk.onboardFace(file, userFullName)
   ```
-- **Face match**
+- **Face match (basic):**
   ```javascript
-  sdk.faceMatch(image, video, userFullName, { ...options });
+  sdk.faceMatch(image, video, userFullName);
+  ```
+- **Face match (advanced w/ reusing video or linking IDs):**
+  ```javascript
+  sdk.faceMatch(
+    image,                   // Reference image file that contains user's face.
+    video,                   // Video file that contains user's face.
+    userFullName,
+    processVideoRequestId,   // ID from the response header of /process-video endpoint.
+    usePrefilledVideo        // Pass true to use the video from the process-video endpoint.
+  );
   ```
 - **Process Video (basic):**
   ```javascript
@@ -338,11 +326,12 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   ```
 - **Process Video (advanced w/ reusing video or linking IDs):**
   ```javascript
-  sdk.processVideo(null, phrase, userFullName, {
-  usePrefilledVideo: true,
-  processVideoRequestId: 'YOUR_REQUEST_ID',
-  requestUserProvidedId: 'YOUR_CUSTOM_ID'
-  });
+  sdk.processVideo(
+    video, // Video file that you want to process
+    phrase,
+    userFullName,
+    requestUserProvidedId // An optional user-provided ID to link transactions within a unified group
+  );
   ```
 - **UI Components:**
   - `<biometry-onboarding ...>` (face onboarding)
