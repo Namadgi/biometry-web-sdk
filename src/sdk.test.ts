@@ -1,5 +1,5 @@
 import { BiometrySDK } from './sdk';
-import { VoiceOnboardingResponse } from './types';
+import { VoiceEnrollmentResponse } from './types';
 
 // Mock the fetch API globally
 global.fetch = jest.fn();
@@ -53,28 +53,28 @@ describe('BiometrySDK', () => {
     await expect(sdk.giveConsent(true, 'John Doe')).rejects.toThrow('Error 400: undefined');
   });
 
-  // VOICE ONBOARDING
+  // VOICE ENROLLMENT
   it('should throw an error if user fullname is missing', async () => {
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
-    await expect(sdk.onboardVoice(audioFile, '', 'uniqueId', 'phrase')).rejects.toThrowError('User fullname is required.');
+    await expect(sdk.enrollVoice(audioFile, '', 'uniqueId', 'phrase')).rejects.toThrowError('User fullname is required.');
   });
 
   it('should throw an error if unique ID is missing', async () => {
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
-    await expect(sdk.onboardVoice(audioFile, 'User Name', '', 'phrase')).rejects.toThrowError('Unique ID is required.');
+    await expect(sdk.enrollVoice(audioFile, 'User Name', '', 'phrase')).rejects.toThrowError('Unique ID is required.');
   });
 
   it('should throw an error if phrase is missing', async () => {
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
-    await expect(sdk.onboardVoice(audioFile, 'User Name', 'uniqueId', '')).rejects.toThrowError('Phrase is required.');
+    await expect(sdk.enrollVoice(audioFile, 'User Name', 'uniqueId', '')).rejects.toThrowError('Phrase is required.');
   });
 
   it('should throw an error if audio file is missing', async () => {
-    await expect(sdk.onboardVoice(null as unknown as File, 'User Name', 'uniqueId', 'phrase')).rejects.toThrowError('Audio file is required.');
+    await expect(sdk.enrollVoice(null as unknown as File, 'User Name', 'uniqueId', 'phrase')).rejects.toThrowError('Audio file is required.');
   });
 
-  it('should successfully onboard voice and return the response', async () => {
-    const mockResponse: VoiceOnboardingResponse = {
+  it('should successfully enroll voice and return the response', async () => {
+    const mockResponse: VoiceEnrollmentResponse = {
       status: 'good',
     };
 
@@ -89,14 +89,14 @@ describe('BiometrySDK', () => {
     const phrase = 'phrase';
 
     const formDataSpy = jest.spyOn(FormData.prototype, 'append');
-    const result = await sdk.onboardVoice(audioFile, userFullName, uniqueId, phrase);
+    const result = await sdk.enrollVoice(audioFile, userFullName, uniqueId, phrase);
 
     expect(formDataSpy).toHaveBeenCalledWith('unique_id', uniqueId);
     expect(formDataSpy).toHaveBeenCalledWith('phrase', phrase);
     expect(formDataSpy).toHaveBeenCalledWith('voice', audioFile);
 
     expect(fetch).toHaveBeenCalledWith(
-      'https://api.biometrysolutions.com/api-gateway/onboard/voice',
+      'https://api.biometrysolutions.com/api-gateway/enroll/voice',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -110,20 +110,20 @@ describe('BiometrySDK', () => {
     expect(result).toEqual(mockResponse);
   });
 
-  // FACE ONBOARDING
+  // FACE ENROLLMENT
   it('should throw an error if user fullname is missing', async () => {
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
-    await expect(sdk.onboardFace(imageFile, '')).rejects.toThrowError('User fullname is required.');
+    await expect(sdk.enrollFace(imageFile, '')).rejects.toThrowError('User fullname is required.');
   });
 
   it('should throw an error if image file is missing', async () => {
-    await expect(sdk.onboardFace(null as unknown as File, 'User Name')).rejects.toThrowError('Face image is required.');
+    await expect(sdk.enrollFace(null as unknown as File, 'User Name')).rejects.toThrowError('Face image is required.');
   });
 
-  it('should successfully onboard face and return the response', async () => {
+  it('should successfully enroll face and return the response', async () => {
     const mockResponse = {
       code: 200,
-      description: 'Face onboarded successfully',
+      description: 'Face enrolled successfully',
     };
 
     (fetch as jest.Mock).mockResolvedValueOnce({
@@ -135,12 +135,12 @@ describe('BiometrySDK', () => {
     const userFullName = 'User Name';
 
     const formDataSpy = jest.spyOn(FormData.prototype, 'append');
-    const result = await sdk.onboardFace(imageFile, userFullName);
+    const result = await sdk.enrollFace(imageFile, userFullName);
 
     expect(formDataSpy).toHaveBeenCalledWith('face', imageFile);
 
     expect(fetch).toHaveBeenCalledWith(
-      'https://api.biometrysolutions.com/api-gateway/onboard/face',
+      'https://api.biometrysolutions.com/api-gateway/enroll/face',
       expect.objectContaining({
         method: 'POST',
         headers: {

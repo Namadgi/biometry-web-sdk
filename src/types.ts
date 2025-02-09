@@ -3,7 +3,7 @@ export enum BiometryAttributes {
   UserFullname = 'user-fullname',
 }
 
-export enum BiometryOnboardingState {
+export enum BiometryEnrollmentState {
   Loading = 'loading',
   Success = 'success',
   ErrorNoFace = 'error-no-face',
@@ -17,7 +17,7 @@ export interface ConsentResponse {
   user_fullname: string;
 }
 
-export interface VoiceOnboardingResponse {
+export interface VoiceEnrollmentResponse {
   status: "good" | "qafailed" | "enrolled";
 }
 
@@ -44,9 +44,9 @@ export interface DocAuthInfo {
   errors?: string[]; // List of error messages, if any
 }
 
-export interface FaceOnboardingResponse {
+export interface FaceEnrollmentResponse {
   data: {
-    onboard_result: FaceOnboardingResult;
+    enroll_result: FaceEnrollmentResult;
     document_auth?: DocAuthInfo;
   },
   message?: string;
@@ -54,7 +54,7 @@ export interface FaceOnboardingResponse {
   scoring_result?: string;
 }
 
-export interface FaceOnboardingResult {
+export interface FaceEnrollmentResult {
   code: number;
   description: string;
 }

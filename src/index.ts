@@ -1,4 +1,4 @@
 export * from './sdk';
 export * from './types';
-export { BiometryOnboarding } from './components/biometry-onboarding';
+export { BiometryEnrollment } from './components/biometry-enrollment';
 export { ProcessVideoComponent } from './components/process-video';
