@@ -363,7 +363,7 @@ export class ProcessVideoComponent extends HTMLElement {
             const buggyBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
             
             ysFixWebmDuration(buggyBlob, duration, {logger: false})
-              .then((fixedBlob) => {
+              .then((fixedBlob: Blob) => {
                 this.onStopMediaRecorder(fixedBlob);
             });
         };

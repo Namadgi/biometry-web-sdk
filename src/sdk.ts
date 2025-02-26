@@ -2,7 +2,7 @@ import { ConsentResponse, FaceMatchResponse, FaceOnboardingResponse, VoiceOnboar
 
 export class BiometrySDK {
   private apiKey: string;
-  private static readonly BASE_URL: string = 'https://api.biometrysolutions.com';
+  private static readonly BASE_URL: string = 'https://api.biometrysolutions.com'; //'https://dev-console.biometrysolutions.com';
 
   constructor(apiKey: string) {
     if (!apiKey) {
@@ -12,7 +12,8 @@ export class BiometrySDK {
     this.apiKey = apiKey;
   }
 
-  private async request<T>(path: string, method: string, body?: any, headers?: Record<string, string>): Promise<T> {
+  private async request<T> (path: string, method: string, body?: any, headers?: Record<string, string>): 
+    Promise<{ data: T; headers: Record<string, string> }> {
     const defaultHeaders: HeadersInit = {
       Authorization: `Bearer ${this.apiKey}`,
     };
@@ -23,7 +24,6 @@ export class BiometrySDK {
       requestHeaders['Content-Type'] = 'application/json';
       body = JSON.stringify(body);
     }
-
     const response = await fetch(`${BiometrySDK.BASE_URL}${path}`, {
       method,
       headers: requestHeaders,
@@ -37,7 +37,15 @@ export class BiometrySDK {
       throw new Error(`Error ${response.status}: ${errorMessage}`);
     }
 
-    return await response.json();
+    // Extract response headers
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key.toLowerCase()] = value;
+    });
+
+    const data = await response.json();
+
+    return { data, headers: responseHeaders };
   }
 
   /**
@@ -61,15 +69,15 @@ export class BiometrySDK {
       user_fullname: userFullName,
     };
 
-    const response = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
+    const { data } = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
       '/api-consent/consent',
       'POST',
       body
     );
 
     return {
-      is_consent_given: response.is_consent_given,
-      user_fullname: response.user_fullname,
+      is_consent_given: data.is_consent_given,
+      user_fullname: data.user_fullname,
     };
   }
 
@@ -109,12 +117,13 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    return this.request<VoiceOnboardingResponse>(
+    const { data } = await this.request<VoiceOnboardingResponse>(
       '/api-gateway/onboard/voice',
       'POST',
       formData,
       headers
     );
+    return data;
   }
 
   /**
@@ -145,12 +154,13 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    return this.request<FaceOnboardingResponse>(
-      '/api-gateway/onboard/face',
+    const { data } = await this.request<FaceOnboardingResponse>(
+      '/api-gateway/enroll/face',
       'POST',
       formData,
       headers
     );
+    return data;
   }
 
   /**
@@ -200,12 +210,13 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    return this.request<FaceMatchResponse>(
+    const { data} = await this.request<FaceMatchResponse>(
       '/api-gateway/match-faces',
       'POST',
       formData,
       headers
     );
+    return data;
   }
 
   /**
@@ -229,7 +240,7 @@ export class BiometrySDK {
     if (!phrase) throw new Error('Phrase is required.');
 
     const formData = new FormData();
-    formData.append('phrase', phrase);
+    formData.append('phrase', phrase); 
     formData.append('video', video);
 
     const headers: Record<string, string> = {};
@@ -246,11 +257,13 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(deviceInfo);
     }
 
-    return this.request<any>(
+    const response = await this.request<any>(
       '/api-gateway/process-video',
       'POST',
       formData,
       headers
     );
+  
+    return { data: response.data, headers: response.headers };
   }
 }
