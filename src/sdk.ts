@@ -33,7 +33,7 @@ export class BiometrySDK {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData?.error || errorData?.message || 'Unknown error occurred';
-  
+
       throw new Error(`Error ${response.status}: ${errorMessage}`);
     }
 
@@ -53,14 +53,29 @@ export class BiometrySDK {
   }
 
   /**
-   * Submits consent for a user.
+   * Starts a new Session for a user.
+   * 
+   * @returns {Promise<string>} A promise resolving to the session ID.
+   * @throws {Error} - If the request fails.
+   */
+  async startSession(): Promise<string> {
+    const response = await this.request<{ data: string, message: string }>(
+      '/api-gateway/sessions/start',
+      'POST'
+    );
+    return response.data;
+  }
+
+  /**
+   * Submits Authorization consent for a user.
+   * Authorization Consent is required to use the services like Face and Voice recognition.
    * 
    * @param {boolean} isConsentGiven - Indicates whether the user has given consent.
    * @param {string} userFullName - The full name of the user giving consent.
    * @returns {Promise<ConsentResponse>} A promise resolving to the consent response.
    * @throws {Error} - If the user's full name is not provided or if the request fails.
    */
-  async giveConsent(
+  async giveAuthorizationConsent(
     isConsentGiven: boolean,
     userFullName: string
   ): Promise<ApiResponse<ConsentResponse>>  {
@@ -73,12 +88,50 @@ export class BiometrySDK {
       user_fullname: userFullName,
     };
 
-    const response = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
+    const response = await this.request<{ data: { is_consent_given: boolean; user_fullname: string } }>(
       '/api-consent/consent',
       'POST',
       body
     );
 
+    return {
+      is_consent_given: response.data.is_consent_given,
+      user_fullname: response.data.user_fullname,
+    };
+  }
+
+  /**
+   * Submits Storage consent for a user.
+   * Storage consent is granted by users, allowing us to store their biometric data for future verification.
+   * 
+   * @param {boolean} isStorageConsentGiven - Indicates whether the user has given storage consent.
+   * @param {string} userFullName - The full name of the user giving storage consent.
+   * @returns {Promise<ConsentResponse>} A promise resolving to the consent response.
+   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   */
+  async giveStorageConsent(
+    isStorageConsentGiven: boolean,
+    userFullName: string
+  ): Promise<ConsentResponse> {
+    if (!userFullName) {
+      throw new Error('User Full Name is required to give storage consent.');
+    }
+
+    const body = {
+      is_storage_consent_given: isStorageConsentGiven,
+      user_fullname: userFullName,
+    };
+
+    const response = await this.request<{ data: { is_storage_consent_given: boolean; user_fullname: string } }>(
+      '/api-consent/strg-consent',
+      'POST',
+      body
+    );
+
+    return {
+      is_consent_given: response.data.is_storage_consent_given,
+      user_fullname: response.data.user_fullname,
+    };
     return response;
   }
 
