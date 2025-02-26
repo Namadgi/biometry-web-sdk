@@ -1,4 +1,4 @@
-import { ConsentResponse, FaceMatchResponse, FaceOnboardingResponse, VoiceOnboardingResponse } from "./types";
+import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse } from "./types";
 
 export class BiometrySDK {
   private apiKey: string;
@@ -74,23 +74,23 @@ export class BiometrySDK {
   }
 
   /**
-   * Onboards a user's voice for biometric authentication.
+   * Enrolls a user's voice for biometric authentication.
    * 
    * @param {File} audio - The audio file containing the user's voice.
-   * @param {string} userFullName - The full name of the user being onboarded.
-   * @param {string} uniqueId - A unique identifier for the onboarding process.
+   * @param {string} userFullName - The full name of the user being enrolled.
+   * @param {string} uniqueId - A unique identifier for the enrolling process.
    * @param {string} phrase - The phrase spoken in the audio file.
    * @param {string} [requestUserProvidedId] - An optional user-provided ID to link transactions within a unified group.
-   * @returns {Promise<VoiceOnboardingResponse>} - A promise resolving to the voice onboarding response.
+   * @returns {Promise<VoiceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
-  async onboardVoice(
+  async enrollVoice(
     audio: File,
     userFullName: string,
     uniqueId: string,
     phrase: string,
     requestUserProvidedId?: string
-  ): Promise<VoiceOnboardingResponse> {
+  ): Promise<VoiceEnrollmentResponse> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!uniqueId) throw new Error('Unique ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
@@ -109,8 +109,8 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    return this.request<VoiceOnboardingResponse>(
-      '/api-gateway/onboard/voice',
+    return this.request<VoiceEnrollmentResponse>(
+      '/api-gateway/enroll/voice',
       'POST',
       formData,
       headers
@@ -118,16 +118,16 @@ export class BiometrySDK {
   }
 
   /**
-   * Onboards a user's face for biometric authentication.
+   * Enrolls a user's face for biometric authentication.
    * 
    * @param {File} face - Image file that contains user's face.
-   * @param {string} userFullName - The full name of the user being onboarded.
+   * @param {string} userFullName - The full name of the user being enrolled.
    * @param {string} isDocument - Indicates whether the image is a document.
    * @param {string} [requestUserProvidedId] - An optional user-provided ID to link transactions within a unified group.
-   * @returns {Promise<FaceOnboardingResponse>} - A promise resolving to the voice onboarding response.
+   * @returns {Promise<FaceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
-  async onboardFace(face: File, userFullName: string, isDocument?: boolean, requestUserProvidedId?: string): Promise<FaceOnboardingResponse> {
+  async enrollFace(face: File, userFullName: string, isDocument?: boolean, requestUserProvidedId?: string): Promise<FaceEnrollmentResponse> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!face) throw new Error('Face image is required.');
 
@@ -145,8 +145,8 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    return this.request<FaceOnboardingResponse>(
-      '/api-gateway/onboard/face',
+    return this.request<FaceEnrollmentResponse>(
+      '/api-gateway/enroll/face',
       'POST',
       formData,
       headers
@@ -162,7 +162,7 @@ export class BiometrySDK {
    * @param {string} processVideoRequestId - ID from the response header of /process-video endpoint.
    * @param {boolean} usePrefilledVideo - Pass true to use the video from the process-video endpoint.
    * @param {string} [requestUserProvidedId] - An optional user-provided ID to link transactions within a unified group.
-   * @returns {Promise<FaceMatchResponse>} - A promise resolving to the voice onboarding response.
+   * @returns {Promise<FaceMatchResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
   async matchFaces(

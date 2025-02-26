@@ -3,7 +3,7 @@ import { useRef } from "react";
 
 const { useEffect } = require("react");
 
-const BiometryOnboarding = ({
+const BiometryEnrollment = ({
   apiKey,
   userFullname,
   onSuccess,
@@ -13,15 +13,15 @@ const BiometryOnboarding = ({
   children,
   ...props
 }) => {
-  const onboardingRef = useRef(null);
+  const enrollmentRef = useRef(null);
 
   useEffect(() => {
-    const onboardingElement = onboardingRef.current;
+    const enrollmentElement = enrollmentRef.current;
 
-    if (onboardingElement) {
+    if (enrollmentElement) {
       // Set attributes for the custom element
-      onboardingElement.setAttribute('api-key', apiKey);
-      onboardingElement.setAttribute('user-fullname', userFullname);
+      enrollmentElement.setAttribute('api-key', apiKey);
+      enrollmentElement.setAttribute('user-fullname', userFullname);
 
       // Event handler for state changes
       const handleStateChange = (event) => {
@@ -41,33 +41,33 @@ const BiometryOnboarding = ({
       };
 
       // Attach the event listener
-      onboardingElement.addEventListener('stateChange', handleStateChange);
+      enrollmentElement.addEventListener('stateChange', handleStateChange);
 
       // Cleanup the event listener on unmount
       return () => {
-        onboardingElement.removeEventListener('stateChange', handleStateChange);
+        enrollmentElement.removeEventListener('stateChange', handleStateChange);
       };
     }
   }, [apiKey, userFullname, onSuccess, onError, onLoading]);
 
   return (
     <div
-      className={`biometry-onboarding-wrapper ${className || ''}`}
+      className={`biometry-enrollment-wrapper ${className || ''}`}
       {...props}
     >
-      <biometry-onboarding ref={onboardingRef}>
+      <biometry-enrollment ref={enrollmentRef}>
         {/* Default slots with fallback content */}
         <div slot="video" className="default-video">
           <video autoPlay muted playsInline></video>
         </div>
         <div slot="button" className="default-button">
-          <button>Start Onboarding</button>
+          <button>Start Enrollment</button>
         </div>
         <div slot="canvas" className="default-canvas">
           <canvas width="640" height="480"></canvas>
         </div>
         <div slot="loading" className="default-loading">Loading...</div>
-        <div slot="success" className="default-success">Onboarding Successful!</div>
+        <div slot="success" className="default-success">Enrollment Successful!</div>
         <div slot="error-no-face" className="default-error">No face detected.</div>
         <div slot="error-multiple-faces" className="default-error">Multiple faces detected.</div>
         <div slot="error-not-centered" className="default-error">Face not centered.</div>
@@ -75,9 +75,9 @@ const BiometryOnboarding = ({
 
         {/* Allow overriding default slots */}
         {children}
-      </biometry-onboarding>
+      </biometry-enrollment>
     </div>
   );
 };
 
-export default BiometryOnboarding;
+export default BiometryEnrollment;
