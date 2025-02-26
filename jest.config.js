@@ -1,8 +1,16 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} **/
-export default {
-  testEnvironment: "node",
+/** @type {import('jest').Config} */
+const config = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
   transform: {
-    "^.+.tsx?$": ["ts-jest", {}],
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        // Force ts-jest to handle ESM
+        module: 'ESNext'
+      }
+    }]
   },
-  modulePathIgnorePatterns: ["dist", "examples"],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node']
 };
+
+module.exports = config;

@@ -16,17 +16,17 @@ describe('BiometrySDK', () => {
     expect(() => new BiometrySDK('')).toThrow('API Key is required to initialize the SDK.');
   });
 
-  // CONSENT
-  it('should call fetch with correct headers and body when giving consent', async () => {
+  // AUTHORIZATION CONSENT
+  it('should call fetch with correct headers and body when giving authorization consent', async () => {
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ is_consent_given: true, user_fullname: 'John Doe' }),
+      json: async () => ({ data: { is_consent_given: true, user_fullname: 'John Doe' } }),
     });
 
-    const result = await sdk.giveConsent(true, 'John Doe');
+    const result = await sdk.giveAuthorizationConsent(true, 'John Doe');
 
     expect(fetch).toHaveBeenCalledWith(
-      'https://api.biometrysolutions.com/consent',
+      'https://api.biometrysolutions.com/api-consent/consent',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -43,14 +43,51 @@ describe('BiometrySDK', () => {
     expect(result).toEqual({ is_consent_given: true, user_fullname: 'John Doe', });
   });
 
-  it('should throw an error if response is not ok', async () => {
+  it('should throw an error if authorization consent response is not ok', async () => {
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({ error: 'is_consent_given must be true' }),
     });
 
-    await expect(sdk.giveConsent(true, 'John Doe')).rejects.toThrow('Error 400: undefined');
+    await expect(sdk.giveAuthorizationConsent(true, 'John Doe')).rejects.toThrow('Error 400: is_consent_given must be true');
+  });
+
+  // STORAGE CONSENT
+  it('should call fetch with correct headers and body when giving storage consent', async () => {
+    (fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { is_consent_given: true, user_fullname: 'John Doe' } }),
+    });
+
+    const result = await sdk.giveStorageConsent(true, 'John Doe');
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.biometrysolutions.com/api-consent/strg-consent',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          is_consent_given: true,
+          user_fullname: 'John Doe',
+        }),
+      })
+    );
+
+    expect(result).toEqual({ is_consent_given: true, user_fullname: 'John Doe', });
+  });
+
+  it('should throw an error if storage consent response is not ok', async () => {
+    (fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'is_consent_given must be true' }),
+    });
+
+    await expect(sdk.giveStorageConsent(true, 'John Doe')).rejects.toThrow('Error 400: is_consent_given must be true');
   });
 
   // VOICE ENROLLMENT

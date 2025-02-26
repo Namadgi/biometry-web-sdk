@@ -118,18 +118,18 @@ export class BiometrySDK {
     }
 
     const body = {
-      is_storage_consent_given: isStorageConsentGiven,
+      is_consent_given: isStorageConsentGiven,
       user_fullname: userFullName,
     };
 
-    const response = await this.request<{ data: { is_storage_consent_given: boolean; user_fullname: string } }>(
+    const response = await this.request<{ data: { is_consent_given: boolean; user_fullname: string } }>(
       '/api-consent/strg-consent',
       'POST',
       body
     );
 
     return {
-      is_consent_given: response.data.is_storage_consent_given,
+      is_consent_given: response.data.is_consent_given,
       user_fullname: response.data.user_fullname,
     };
     return response;
