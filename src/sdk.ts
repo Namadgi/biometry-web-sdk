@@ -41,7 +41,7 @@ export class BiometrySDK {
     const responseHeaders: Record<string, string> = {};
     const requestId = response.headers.get("X-Request-Id");
     if (requestId) {
-      responseHeaders["x-request-id"] = requestId;
+      responseHeaders["X-Request-Id"] = requestId;
     }
     
     const data = await response.json();
