@@ -39,10 +39,11 @@ export class BiometrySDK {
 
     // Extract response headers
     const responseHeaders: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      responseHeaders[key.toLowerCase()] = value;
-    });
-
+    const requestId = response.headers.get("X-Request-Id");
+    if (requestId) {
+      responseHeaders["x-request-id"] = requestId;
+    }
+    
     const data = await response.json();
 
     return { data, headers: responseHeaders };
@@ -59,7 +60,7 @@ export class BiometrySDK {
   async giveConsent(
     isConsentGiven: boolean,
     userFullName: string
-  ): Promise<ConsentResponse> {
+  ): Promise<{ data: ConsentResponse; headers: Record<string, string> }> {
     if (!userFullName) {
       throw new Error('User Full Name is required to give consent.');
     }
@@ -69,15 +70,18 @@ export class BiometrySDK {
       user_fullname: userFullName,
     };
 
-    const { data } = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
+    const response = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
       '/api-consent/consent',
       'POST',
       body
     );
 
     return {
-      is_consent_given: data.is_consent_given,
-      user_fullname: data.user_fullname,
+      data: {
+        is_consent_given: response.data.is_consent_given,
+        user_fullname: response.data.user_fullname,
+      },
+      headers: response.headers
     };
   }
 
@@ -98,7 +102,7 @@ export class BiometrySDK {
     uniqueId: string,
     phrase: string,
     requestUserProvidedId?: string
-  ): Promise<VoiceOnboardingResponse> {
+  ): Promise<{ data: VoiceOnboardingResponse; headers: Record<string, string> }> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!uniqueId) throw new Error('Unique ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
@@ -117,13 +121,16 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    const { data } = await this.request<VoiceOnboardingResponse>(
+    const response = await this.request<VoiceOnboardingResponse>(
       '/api-gateway/onboard/voice',
       'POST',
       formData,
       headers
     );
-    return data;
+    return {
+      data: response.data, 
+      headers: response.headers
+    };
   }
 
   /**
@@ -136,7 +143,8 @@ export class BiometrySDK {
    * @returns {Promise<FaceOnboardingResponse>} - A promise resolving to the voice onboarding response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
-  async onboardFace(face: File, userFullName: string, isDocument?: boolean, requestUserProvidedId?: string): Promise<FaceOnboardingResponse> {
+  async onboardFace(face: File, userFullName: string, isDocument?: boolean, requestUserProvidedId?: string): 
+  Promise<{ data: FaceOnboardingResponse; headers: Record<string, string> }> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!face) throw new Error('Face image is required.');
 
@@ -154,13 +162,17 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    const { data } = await this.request<FaceOnboardingResponse>(
+    const response = await this.request<FaceOnboardingResponse>(
       '/api-gateway/enroll/face',
       'POST',
       formData,
       headers
     );
-    return data;
+
+    return {
+      data: response.data,
+      headers: response.headers
+    };
   }
 
   /**
@@ -182,7 +194,7 @@ export class BiometrySDK {
     processVideoRequestId?: string,
     usePrefilledVideo?: boolean,
     requestUserProvidedId?: string
-  ): Promise<FaceMatchResponse> {
+  ): Promise<{ data: FaceMatchResponse; headers: Record<string, string> }> {
     if (!image) throw new Error('Face image is required.');
     if ((!processVideoRequestId && !usePrefilledVideo) && !video) throw new Error('Video is required.');
 
@@ -210,13 +222,16 @@ export class BiometrySDK {
       headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
     }
 
-    const { data} = await this.request<FaceMatchResponse>(
+    const response = await this.request<FaceMatchResponse>(
       '/api-gateway/match-faces',
       'POST',
       formData,
       headers
     );
-    return data;
+    return {
+      data: response.data, 
+      headers: response.headers
+    };
   }
 
   /**
@@ -257,13 +272,16 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(deviceInfo);
     }
 
-    const response = await this.request<any>(
+    const response = await this.request<any>(                                            
       '/api-gateway/process-video',
       'POST',
       formData,
       headers
     );
   
-    return { data: response.data, headers: response.headers };
+    return { 
+      data: response.data, 
+      headers: response.headers 
+    };
   }
 }
