@@ -1,7 +1,7 @@
 import { BiometrySDK } from "../sdk.js";
-import { BiometryAttributes, BiometryOnboardingState } from "../types.js";
+import { BiometryAttributes, BiometryEnrollmentState } from "../types.js";
 
-export class BiometryOnboarding extends HTMLElement {
+export class BiometryEnrollment extends HTMLElement {
   private readonly shadow: ShadowRoot;
   private sdk: BiometrySDK | null;
   private videoElement: HTMLVideoElement | null = null;
@@ -66,13 +66,13 @@ export class BiometryOnboarding extends HTMLElement {
   validateAttributes(): void {
     if (!this.apiKey) {
       console.error("API key is required.");
-      this.toggleState(BiometryOnboardingState.ErrorOther);
+      this.toggleState(BiometryEnrollmentState.ErrorOther);
       return;
     }
     
     if (!this.userFullname) { 
       console.error("User fullname is required."); 
-      this.toggleState(BiometryOnboardingState.ErrorOther);
+      this.toggleState(BiometryEnrollmentState.ErrorOther);
       return;
     }
   }
@@ -133,19 +133,19 @@ export class BiometryOnboarding extends HTMLElement {
     if (this.apiKey) {
       this.sdk = new BiometrySDK(this.apiKey);
     } else {
-      this.toggleState(BiometryOnboardingState.ErrorOther);
+      this.toggleState(BiometryEnrollmentState.ErrorOther);
       console.error("API key is required to initialize the SDK.");
     }
   }
 
-  private toggleState(state: BiometryOnboardingState | string): void {
+  private toggleState(state: BiometryEnrollmentState | string): void {
     const slots = [
-      BiometryOnboardingState.Loading,
-      BiometryOnboardingState.Success,
-      BiometryOnboardingState.ErrorNoFace,
-      BiometryOnboardingState.ErrorMultipleFaces,
-      BiometryOnboardingState.ErrorNotCentered,
-      BiometryOnboardingState.ErrorOther,
+      BiometryEnrollmentState.Loading,
+      BiometryEnrollmentState.Success,
+      BiometryEnrollmentState.ErrorNoFace,
+      BiometryEnrollmentState.ErrorMultipleFaces,
+      BiometryEnrollmentState.ErrorNotCentered,
+      BiometryEnrollmentState.ErrorOther,
     ];
 
     slots.forEach((slotName) => {
@@ -224,51 +224,51 @@ export class BiometryOnboarding extends HTMLElement {
         try {
           if (!blob) {
             console.error("Failed to capture photo.");
-            this.toggleState(BiometryOnboardingState.ErrorOther);
+            this.toggleState(BiometryEnrollmentState.ErrorOther);
             return;
           }
 
           const file = new File([blob], "onboard-face.jpg", { type: "image/jpeg" });
 
           try {
-            const response = await this.sdk!.onboardFace(file, this.userFullname!);
-            const result = response.data.onboard_result;
+            const response = await this.sdk!.enrollFace(file, this.userFullname!);
+            const result = response.data.enroll_result;
 
             this.resultCode = result?.code;
             this.description = result?.description || "Unknown error occurred.";
 
             switch (this.resultCode) {
               case 0:
-                this.toggleState(BiometryOnboardingState.Success);
+                this.toggleState(BiometryEnrollmentState.Success);
                 break;
               case 1:
-                this.toggleState(BiometryOnboardingState.ErrorNoFace);
+                this.toggleState(BiometryEnrollmentState.ErrorNoFace);
                 break;
               case 2:
-                this.toggleState(BiometryOnboardingState.ErrorMultipleFaces);
+                this.toggleState(BiometryEnrollmentState.ErrorMultipleFaces);
                 break;
               case 3:
-                this.toggleState(BiometryOnboardingState.ErrorNotCentered);
+                this.toggleState(BiometryEnrollmentState.ErrorNotCentered);
                 break;
               default:
-                this.toggleState(BiometryOnboardingState.ErrorOther);
+                this.toggleState(BiometryEnrollmentState.ErrorOther);
             }
 
-            console.log("Onboarding result:", result);
+            console.log("Enrollment result:", result);
           } catch (error) {
-            console.error("Error onboarding face:", error);
-            this.toggleState(BiometryOnboardingState.ErrorOther);
+            console.error("Error enrolling face:", error);
+            this.toggleState(BiometryEnrollmentState.ErrorOther);
           }
         } catch (error) {
           console.error("Error in toBlob callback:", error);
-          this.toggleState(BiometryOnboardingState.ErrorOther);
+          this.toggleState(BiometryEnrollmentState.ErrorOther);
         }
       }, "image/jpeg");
     } catch (error) {
       console.error("Error capturing photo:", error);
-      this.toggleState(BiometryOnboardingState.ErrorOther);
+      this.toggleState(BiometryEnrollmentState.ErrorOther);
     }
   }
 }
 
-customElements.define("biometry-onboarding", BiometryOnboarding);
+customElements.define("biometry-enrollment", BiometryEnrollment);

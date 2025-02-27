@@ -1,21 +1,21 @@
 # biometry-sdk
 
 ## Overview
-The **Biometry Web SDK** is a software development kit designed to simplify the integration of Biometry's API services into your web application. Providing tools, UI components, and utilities enables biometric onboarding (face and voice), liveness checks, and user consent.
+The **Biometry Web SDK** is a software development kit designed to simplify the integration of Biometry's API services into your web application. Providing tools, UI components, and utilities enables biometric enrollment (face and voice), liveness checks, and user consent.
 
 ## Table of Contents:
 - [Installation](#installation)
 - [Basic Usage (Direct SDK Methods)](#basic-usage-direct-sdk-methods)
   - [Consent](#1-give-consent)
-  - [Face Onboarding](#2-face-onboarding)
-  - [Voice Onboarding](#3-voice-onboarding)
+  - [Face Enrollment](#2-face-enrollment)
+  - [Voice Enrollment](#3-voice-enrollment)
   - [Process Video](#4-process-video)
 - [Advanced Usage And Best Practices](#advanced-usage-and-best-practices)
   - [Typical FaceMatch Flow](#typical-facematch-flow)
   - [Error Handling](#error-handling)
   - [Security And Privacy Considerations](#security-and-privacy-considerations)
 - [UI Components](#ui-components)
-  - [Face Onboarding Component](#face-onboarding-component)
+  - [Face Enrollment Component](#face-enrollment-component)
   - [Process Video Component](#process-video-component)
 - [License](#license)
 - [More Information](#more-information)
@@ -51,24 +51,24 @@ You **must** obtain user consent before performing any biometric operations:
 - The first argument (`true`) indicates that the user has granted consent.
 - The second argument is the user’s full name (used for record-keeping within Biometry).
 
-### 2. Face Onboarding
-Onboard a user’s face for future recognition or matching:
+### 2. Face Enrollment
+Enroll a user’s face for future recognition or matching:
   ```javascript
   const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
   
-  // Onboard face
-  const faceResponse = await sdk.onboardFace(faceFile, 'John Doe');
-  console.log('Face Onboarding Response:', faceResponse);
+  // Enroll face
+  const faceResponse = await sdk.enrollFace(faceFile, 'John Doe');
+  console.log('Face Enrollment Response:', faceResponse);
   ```
 
-### 3. Voice Onboarding
+### 3. Voice Enrollment
 Enroll a user’s voice for future authentication checks:
   ```javascript
   const voiceFile = new File([/* voice audio bytes */], 'voice.wav', { type: 'audio/wav' });
 
   await sdk.giveConsent(true, 'John Doe');
-  const voiceResponse = await sdk.onboardVoice(voiceFile, 'John Doe');
-  console.log('Voice Onboarding Response:', voiceResponse);
+  const voiceResponse = await sdk.enrollVoice(voiceFile, 'John Doe');
+  console.log('Voice Enrollment Response:', voiceResponse);
   ```
 ### 4. Process Video
 Process a user’s video for liveness checks and identity authorization:
@@ -124,8 +124,8 @@ Use matchFaces to compare a reference image (e.g., a document or a captured self
   ```
 ## Advanced Usage And Best Practices
 ### Typical FaceMatch Flow
-One common advanced scenario involves document authentication in onboarding face and face matching:
-1. Face Onboarding: Capture the user’s live face or the user uploads a picture of their identity document (front side with the face)
+One common advanced scenario involves document authentication in enrollment face and face matching:
+1. Face Enrollment: Capture the user’s live face or the user uploads a picture of their identity document (front side with the face)
 2. Process Video: Capture the user’s live face
 3. Face Match: Compare the extracted face from the document with the user’s live face to verify identity.
 
@@ -134,13 +134,13 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   // 1. Acquire user consent
   await sdk.giveConsent(true, userFullName);
   
-  // 2. Onboard or capture the user’s face
-  //    (Either using onboardFace or processVideo, depending on your user flow)
+  // 2. Enroll or capture the user’s face
+  //    (Either using enrollFace or processVideo, depending on your user flow)
   const userFaceFile = new File([/* user selfie bytes */], 'image.jpg', { type: 'image/jpeg' });
   const userVideoFile = new File([/* user selfie bytes */], 'video.mp4', { type: 'video/*' });
-  const onboardResponse = await sdk.onboardFace(userFaceFile, userFullName);
+  const enrollResponse = await sdk.enrollFace(userFaceFile, userFullName);
   
-  // 3. Face Match (Compare video face with user’s onboarded face)
+  // 3. Face Match (Compare video face with user’s enrolled face)
   const faceMatchResponse = await sdk.faceMatch(
     userFaceFile,
     userVideoFile,
@@ -159,9 +159,9 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
 All SDK calls can throw errors for various reasons:
 - Network/Connection Issues
 - Invalid File Types
-- No Face Detected (Face Onboarding)
-- No Speech Detected (Voice Onboarding)
-- Multiple Faces Detected (Face Onboarding)
+- No Face Detected (Face Enrollment)
+- No Speech Detected (Voice Enrollment)
+- Multiple Faces Detected (Face Enrollment)
 - Liveness Check Failure (Process Video)
 
 Always wrap calls in try/catch and provide user-friendly messages or fallback logic.
@@ -200,8 +200,8 @@ The Biometry Web SDK includes reusable, customizable web components for crucial 
 <script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/biometry-sdk.esm.js"></script>
 ```
 
-### Face Onboarding Component
-This component provides an intuitive interface for onboarding users with their cameras. It integrates directly with the `BiometrySDK backend`, managing camera capture, consent checks, and error handling.
+### Face Enrollment Component
+This component provides an intuitive interface for enrollment users with their cameras. It integrates directly with the `BiometrySDK backend`, managing camera capture, consent checks, and error handling.
 
 ### Usage
 **Required attributes:**
@@ -215,15 +215,15 @@ This component provides an intuitive interface for onboarding users with their c
 
 **Basic Usage**
 ```html
-<biometry-onboarding
+<biometry-enrollment
   api-key="your-api-key"
   user-fullname="John Doe">
-</biometry-onboarding>
+</biometry-enrollment>
 ```
 
 **Advanced Usage**
 ```html
-<biometry-onboarding
+<biometry-enrollment
   api-key="your-api-key"
   user-fullname="John Doe">
   
@@ -232,12 +232,12 @@ This component provides an intuitive interface for onboarding users with their c
   
   <!-- Custom Status Messages -->
   <div slot="loading">Please wait while we process your photo...</div>
-  <div slot="success">Congratulations! You have been onboarded.</div>
+  <div slot="success">Congratulations! You have been enrolled.</div>
   <div slot="error-no-face">No face detected. Make sure your face is visible.</div>
   <div slot="error-multiple-faces">Multiple faces detected. Please try again alone.</div>
   <div slot="error-not-centered">Align your face with the center of the screen.</div>
   <div slot="error-other">Oops! Something went wrong. Please try again.</div>
-</biometry-onboarding>
+</biometry-enrollment>
 ```
 
 ### Process Video Component
@@ -294,17 +294,17 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   ```bash
   npm install biometry-sdk
   ```
-- **Consent**: (Required before onboarding/processing)
+- **Consent**: (Required before enrollment/processing)
   ```javascript
   sdk.giveConsent(true, userFullName)
   ```
-- **Voice Onboarding**:
+- **Voice Enrollment**:
   ```javascript
-  sdk.onboardVoice(file, userFullName)
+  sdk.enrollVoice(file, userFullName)
   ```
-- **Face Onboarding**:
+- **Face Enrollment**:
   ```javascript
-  sdk.onboardFace(file, userFullName)
+  sdk.enrollFace(file, userFullName)
   ```
 - **Face match (basic):**
   ```javascript
@@ -334,7 +334,7 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   );
   ```
 - **UI Components:**
-  - `<biometry-onboarding ...>` (face onboarding)
-  - `<process-video ...>` (video onboarding)
-With these **direct SDK methods**, **UI components**, and advanced **best practices** (faceOnboard + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
+  - `<biometry-enrollment ...>` (face enrollment)
+  - `<process-video ...>` (video enrollment)
+With these **direct SDK methods**, **UI components**, and advanced **best practices** (faceEnroll + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
   
