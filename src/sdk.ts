@@ -1,4 +1,4 @@
-import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse } from "./types";
+import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse, DocAuthInfo } from "./types";
 
 export class BiometrySDK {
   private apiKey: string;
@@ -33,7 +33,7 @@ export class BiometrySDK {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData?.error || errorData?.message || 'Unknown error occurred';
-  
+
       throw new Error(`Error ${response.status}: ${errorMessage}`);
     }
 
@@ -41,16 +41,39 @@ export class BiometrySDK {
   }
 
   /**
-   * Submits consent for a user.
+   * Starts a new Session for a user.
+   * 
+   * @returns {Promise<string>} A promise resolving to the session ID.
+   * @throws {Error} - If the request fails.
+   */
+  async startSession(): Promise<string> {
+    const response = await this.request<{ data: string, message: string }>(
+      '/api-gateway/sessions/start',
+      'POST'
+    );
+    return response.data;
+  }
+
+  /**
+   * Submits Authorization consent for a user.
+   * Authorization Consent is required to use the services like Face and Voice recognition.
    * 
    * @param {boolean} isConsentGiven - Indicates whether the user has given consent.
    * @param {string} userFullName - The full name of the user giving consent.
+   * @param {Object} [props] - Optional properties for the consent request.
+   * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
    * @returns {Promise<ConsentResponse>} A promise resolving to the consent response.
    * @throws {Error} - If the user's full name is not provided or if the request fails.
    */
-  async giveConsent(
+  async giveAuthorizationConsent(
     isConsentGiven: boolean,
-    userFullName: string
+    userFullName: string,
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
   ): Promise<ConsentResponse> {
     if (!userFullName) {
       throw new Error('User Full Name is required to give consent.');
@@ -61,15 +84,79 @@ export class BiometrySDK {
       user_fullname: userFullName,
     };
 
-    const response = await this.request<{ is_consent_given: boolean; user_fullname: string }>(
+    const headers: Record<string, string> = {};
+
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
+    }
+
+    const response = await this.request<{ data: { is_consent_given: boolean; user_fullname: string } }>(
       '/api-consent/consent',
       'POST',
-      body
+      body,
+      headers
     );
 
     return {
-      is_consent_given: response.is_consent_given,
-      user_fullname: response.user_fullname,
+      is_consent_given: response.data.is_consent_given,
+      user_fullname: response.data.user_fullname,
+    };
+  }
+
+  /**
+   * Submits Storage consent for a user.
+   * Storage consent is granted by users, allowing us to store their biometric data for future verification.
+   * 
+   * @param {boolean} isStorageConsentGiven - Indicates whether the user has given storage consent.
+   * @param {string} userFullName - The full name of the user giving storage consent.
+   * @param {Object} [props] - Optional properties for the consent request.
+   * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
+   * @returns {Promise<ConsentResponse>} A promise resolving to the consent response.
+   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   */
+  async giveStorageConsent(
+    isStorageConsentGiven: boolean,
+    userFullName: string,
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
+  ): Promise<ConsentResponse> {
+    if (!userFullName) {
+      throw new Error('User Full Name is required to give storage consent.');
+    }
+
+    const body = {
+      is_consent_given: isStorageConsentGiven,
+      user_fullname: userFullName,
+    };
+
+    const headers: Record<string, string> = {};
+
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
+    }
+
+    const response = await this.request<{ data: { is_consent_given: boolean; user_fullname: string } }>(
+      '/api-consent/strg-consent',
+      'POST',
+      body,
+      headers
+    );
+
+    return {
+      is_consent_given: response.data.is_consent_given,
+      user_fullname: response.data.user_fullname,
     };
   }
 
@@ -80,7 +167,10 @@ export class BiometrySDK {
    * @param {string} userFullName - The full name of the user being enrolled.
    * @param {string} uniqueId - A unique identifier for the enrolling process.
    * @param {string} phrase - The phrase spoken in the audio file.
-   * @param {string} [requestUserProvidedId] - An optional user-provided ID to link transactions within a unified group.
+   * @param {Object} [props] - Optional properties for the enrollment request.
+   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
    * @returns {Promise<VoiceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
@@ -89,7 +179,10 @@ export class BiometrySDK {
     userFullName: string,
     uniqueId: string,
     phrase: string,
-    requestUserProvidedId?: string
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
   ): Promise<VoiceEnrollmentResponse> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!uniqueId) throw new Error('Unique ID is required.');
@@ -105,8 +198,12 @@ export class BiometrySDK {
       'X-User-Fullname': userFullName,
     };
 
-    if (requestUserProvidedId) {
-      headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
     return this.request<VoiceEnrollmentResponse>(
@@ -123,11 +220,17 @@ export class BiometrySDK {
    * @param {File} face - Image file that contains user's face.
    * @param {string} userFullName - The full name of the user being enrolled.
    * @param {string} isDocument - Indicates whether the image is a document.
-   * @param {string} [requestUserProvidedId] - An optional user-provided ID to link transactions within a unified group.
+   * @param {Object} [props] - Optional properties for the enrollment request.
+   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
    * @returns {Promise<FaceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
-  async enrollFace(face: File, userFullName: string, isDocument?: boolean, requestUserProvidedId?: string): Promise<FaceEnrollmentResponse> {
+  async enrollFace(face: File, userFullName: string, isDocument?: boolean, props?: {
+    sessionId?: string,
+    deviceInfo?: object,
+  }): Promise<FaceEnrollmentResponse> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!face) throw new Error('Face image is required.');
 
@@ -141,8 +244,12 @@ export class BiometrySDK {
       'X-User-Fullname': userFullName,
     };
 
-    if (requestUserProvidedId) {
-      headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
     return this.request<FaceEnrollmentResponse>(
@@ -154,6 +261,53 @@ export class BiometrySDK {
   }
 
   /**
+   * Check the validity of a documents.
+   * 
+   * @param {File} document - Document image file.
+   * @param {string} userFullName - The full name of the user being checked.
+   * @param {Object} [props] - Optional properties for the enrollment request.
+   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
+   * @returns {Promise<DocAuthInfo>} - A promise resolving to the document authentication information.
+   */
+  async checkDocAuth(
+    document: File,
+    userFullName: string,
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
+  ): Promise<DocAuthInfo> {
+    if (!document) throw new Error('Document image is required.');
+    if (!userFullName) throw new Error('User fullname is required.');
+
+    const formData = new FormData();
+    formData.append('document', document);
+
+    const headers: Record<string, string> = {
+      'X-User-Fullname': userFullName,
+    };
+
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
+    }
+
+    const response = await this.request<{ data: DocAuthInfo, message: string }>(
+      '/api-gateway/check-doc-auth',
+      'POST',
+      formData,
+      headers
+    );
+
+    return response.data;
+  }
+
+  /**
    * Matches a user's face from video against a reference image.
    * 
    * @param {File} image - Reference image file that contains user's face.
@@ -161,7 +315,10 @@ export class BiometrySDK {
    * @param {string} userFullName - Pass the full name of end-user to process Voice and Face recognition services.
    * @param {string} processVideoRequestId - ID from the response header of /process-video endpoint.
    * @param {boolean} usePrefilledVideo - Pass true to use the video from the process-video endpoint.
-   * @param {string} [requestUserProvidedId] - An optional user-provided ID to link transactions within a unified group.
+   * @param {Object} [props] - Optional properties for the enrollment request.
+   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
    * @returns {Promise<FaceMatchResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
@@ -171,7 +328,10 @@ export class BiometrySDK {
     userFullName?: string,
     processVideoRequestId?: string,
     usePrefilledVideo?: boolean,
-    requestUserProvidedId?: string
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
   ): Promise<FaceMatchResponse> {
     if (!image) throw new Error('Face image is required.');
     if ((!processVideoRequestId && !usePrefilledVideo) && !video) throw new Error('Video is required.');
@@ -196,8 +356,12 @@ export class BiometrySDK {
       headers['X-Use-Prefilled-Video'] = 'true';
     }
 
-    if (requestUserProvidedId) {
-      headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
     return this.request<FaceMatchResponse>(
@@ -214,16 +378,20 @@ export class BiometrySDK {
    * @param {File} video - Video file that you want to process.
    * @param {string} phrase - Set of numbers that user needs to say out loud in the video.
    * @param {string} userFullName - Pass the full name of end-user to process Voice and Face recognition services.
-   * @param {string} requestUserProvidedId - An optional user-provided ID to link transactions within a unified group.
-   * @param {object} deviceInfo - Pass the device information in JSON format to include in transaction.
+   * @param {Object} [props] - Optional properties for the enrollment request.
+   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
    * @returns 
    */
   async processVideo(
     video: File,
     phrase: string,
     userFullName?: string,
-    requestUserProvidedId?: string,
-    deviceInfo?: object
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
   ): Promise<any> {
     if (!video) throw new Error('Video is required.');
     if (!phrase) throw new Error('Phrase is required.');
@@ -238,12 +406,12 @@ export class BiometrySDK {
       headers['X-User-Fullname'] = userFullName;
     }
 
-    if (requestUserProvidedId) {
-      headers['X-Request-User-Provided-ID'] = requestUserProvidedId;
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
     }
 
-    if (deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(deviceInfo);
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
     return this.request<any>(
