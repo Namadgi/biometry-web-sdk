@@ -1,4 +1,4 @@
-import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse } from "./types";
+import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse, DocAuthInfo } from "./types";
 
 export class BiometrySDK {
   private apiKey: string;
@@ -70,7 +70,7 @@ export class BiometrySDK {
   async giveAuthorizationConsent(
     isConsentGiven: boolean,
     userFullName: string,
-    props? : {
+    props?: {
       sessionId?: string,
       deviceInfo?: object,
     }
@@ -123,7 +123,7 @@ export class BiometrySDK {
   async giveStorageConsent(
     isStorageConsentGiven: boolean,
     userFullName: string,
-    props? : {
+    props?: {
       sessionId?: string,
       deviceInfo?: object,
     }
@@ -179,7 +179,7 @@ export class BiometrySDK {
     userFullName: string,
     uniqueId: string,
     phrase: string,
-    props? : {
+    props?: {
       sessionId?: string,
       deviceInfo?: object,
     }
@@ -227,7 +227,7 @@ export class BiometrySDK {
    * @returns {Promise<FaceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
-  async enrollFace(face: File, userFullName: string, isDocument?: boolean, props? : {
+  async enrollFace(face: File, userFullName: string, isDocument?: boolean, props?: {
     sessionId?: string,
     deviceInfo?: object,
   }): Promise<FaceEnrollmentResponse> {
@@ -261,6 +261,53 @@ export class BiometrySDK {
   }
 
   /**
+   * Check the validity of a documents.
+   * 
+   * @param {File} document - Document image file.
+   * @param {string} userFullName - The full name of the user being checked.
+   * @param {Object} [props] - Optional properties for the enrollment request.
+   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
+   *                                      This can include properties like operating system, browser, etc.
+   * @returns {Promise<DocAuthInfo>} - A promise resolving to the document authentication information.
+   */
+  async checkDocAuth(
+    document: File,
+    userFullName: string,
+    props?: {
+      sessionId?: string,
+      deviceInfo?: object,
+    }
+  ): Promise<DocAuthInfo> {
+    if (!document) throw new Error('Document image is required.');
+    if (!userFullName) throw new Error('User fullname is required.');
+
+    const formData = new FormData();
+    formData.append('document', document);
+
+    const headers: Record<string, string> = {
+      'X-User-Fullname': userFullName,
+    };
+
+    if (props?.sessionId) {
+      headers['X-Session-ID'] = props.sessionId;
+    }
+
+    if (props?.deviceInfo) {
+      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
+    }
+
+    const response = await this.request<{ data: DocAuthInfo, message: string }>(
+      '/api-gateway/check-doc-auth',
+      'POST',
+      formData,
+      headers
+    );
+
+    return response.data;
+  }
+
+  /**
    * Matches a user's face from video against a reference image.
    * 
    * @param {File} image - Reference image file that contains user's face.
@@ -281,7 +328,7 @@ export class BiometrySDK {
     userFullName?: string,
     processVideoRequestId?: string,
     usePrefilledVideo?: boolean,
-    props? : {
+    props?: {
       sessionId?: string,
       deviceInfo?: object,
     }
@@ -341,7 +388,7 @@ export class BiometrySDK {
     video: File,
     phrase: string,
     userFullName?: string,
-    props? : {
+    props?: {
       sessionId?: string,
       deviceInfo?: object,
     }
