@@ -1,4 +1,4 @@
-import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse } from "./types";
+import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse, ApiResponse, FaceEnrollmentResult, ProcessVideoResponse } from "./types";
 
 export class BiometrySDK {
   private apiKey: string;
@@ -13,7 +13,7 @@ export class BiometrySDK {
   }
 
   private async request<T> (path: string, method: string, body?: any, headers?: Record<string, string>): 
-    Promise<{ data: T; headers: Record<string, string> }> {
+    Promise<ApiResponse<T>> {
     const defaultHeaders: HeadersInit = {
       Authorization: `Bearer ${this.apiKey}`,
     };
@@ -46,7 +46,10 @@ export class BiometrySDK {
     
     const data = await response.json();
 
-    return { data, headers: responseHeaders };
+    return { 
+      data: data as T, 
+      headers: responseHeaders 
+    };
   }
 
   /**
@@ -60,7 +63,7 @@ export class BiometrySDK {
   async giveConsent(
     isConsentGiven: boolean,
     userFullName: string
-  ): Promise<{ data: ConsentResponse; headers: Record<string, string> }> {
+  ): Promise<ApiResponse<ConsentResponse>>  {
     if (!userFullName) {
       throw new Error('User Full Name is required to give consent.');
     }
@@ -76,13 +79,7 @@ export class BiometrySDK {
       body
     );
 
-    return {
-      data: {
-        is_consent_given: response.data.is_consent_given,
-        user_fullname: response.data.user_fullname,
-      },
-      headers: response.headers
-    };
+    return response;
   }
 
   /**
@@ -102,7 +99,7 @@ export class BiometrySDK {
     uniqueId: string,
     phrase: string,
     requestUserProvidedId?: string
-  ): Promise<{ data: VoiceEnrollmentResponse; headers: Record<string, string> }> {
+  ): Promise<ApiResponse<VoiceEnrollmentResponse>>  {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!uniqueId) throw new Error('Unique ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
@@ -127,10 +124,7 @@ export class BiometrySDK {
       formData,
       headers
     );
-    return {
-      data: response.data, 
-      headers: response.headers
-    };
+    return response;
   }
 
   /**
@@ -144,7 +138,7 @@ export class BiometrySDK {
    * @throws {Error} - If required parameters are missing or the request fails.
    */
   async enrollFace(face: File, userFullName: string, isDocument?: boolean, requestUserProvidedId?: string): 
-  Promise<{ data: FaceEnrollmentResponse; headers: Record<string, string> }> {
+  Promise<ApiResponse<FaceEnrollmentResponse>> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!face) throw new Error('Face image is required.');
 
@@ -169,10 +163,7 @@ export class BiometrySDK {
       headers
     );
 
-    return {
-      data: response.data,
-      headers: response.headers
-    };
+    return response;
   }
 
   /**
@@ -194,7 +185,7 @@ export class BiometrySDK {
     processVideoRequestId?: string,
     usePrefilledVideo?: boolean,
     requestUserProvidedId?: string
-  ): Promise<{ data: FaceMatchResponse; headers: Record<string, string> }> {
+  ): Promise<ApiResponse<FaceMatchResponse>>  {
     if (!image) throw new Error('Face image is required.');
     if ((!processVideoRequestId && !usePrefilledVideo) && !video) throw new Error('Video is required.');
 
@@ -228,10 +219,7 @@ export class BiometrySDK {
       formData,
       headers
     );
-    return {
-      data: response.data, 
-      headers: response.headers
-    };
+    return response;
   }
 
   /**
@@ -250,7 +238,7 @@ export class BiometrySDK {
     userFullName?: string,
     requestUserProvidedId?: string,
     deviceInfo?: object
-  ): Promise<any> {
+  ): Promise<ApiResponse<ProcessVideoResponse>>  {
     if (!video) throw new Error('Video is required.');
     if (!phrase) throw new Error('Phrase is required.');
 
@@ -279,9 +267,6 @@ export class BiometrySDK {
       headers
     );
   
-    return { 
-      data: response.data, 
-      headers: response.headers 
-    };
+    return response;
   }
 }
