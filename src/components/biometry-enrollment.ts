@@ -232,7 +232,7 @@ export class BiometryEnrollment extends HTMLElement {
 
           try {
             const response = await this.sdk!.enrollFace(file, this.userFullname!);
-            const result = response.data.enroll_result;
+            const result = response.data.data.enroll_result;
 
             this.resultCode = result?.code;
             this.description = result?.description || "Unknown error occurred.";
