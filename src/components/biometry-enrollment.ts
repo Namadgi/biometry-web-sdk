@@ -1,5 +1,5 @@
 import { BiometrySDK } from "../sdk.js";
-import { BiometryAttributes, BiometryEnrollmentState } from "../types.js";
+import { BiometryAttributes, BiometryEnrollmentState } from "./types.js";
 
 export class BiometryEnrollment extends HTMLElement {
   private readonly shadow: ShadowRoot;
@@ -232,7 +232,7 @@ export class BiometryEnrollment extends HTMLElement {
 
           try {
             const response = await this.sdk!.enrollFace(file, this.userFullname!);
-            const result = response.data.data.enroll_result;
+            const result = response.body.data.enroll_result;
 
             this.resultCode = result?.code;
             this.description = result?.description || "Unknown error occurred.";

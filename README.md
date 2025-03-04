@@ -6,7 +6,9 @@ The **Biometry Web SDK** is a software development kit designed to simplify the 
 ## Table of Contents:
 - [Installation](#installation)
 - [Basic Usage (Direct SDK Methods)](#basic-usage-direct-sdk-methods)
-  - [Consent](#1-give-consent)
+  - [Consents](#1-consents)
+    - [1.1 Give Authorization Consent](#11-give-authorization-consent)
+    - [1.2 Give Storage Consent](#12-give-storage-consent)
   - [Face Enrollment](#2-face-enrollment)
   - [Voice Enrollment](#3-voice-enrollment)
   - [Process Video](#4-process-video)
@@ -39,12 +41,25 @@ const sdk = new BiometrySDK('YOUR_API_KEY');
 ### Example
 You can find an example in the example/ directory. The example demonstrates how you might integrate the BiometrySDK in a React component with the state.
 
-### 1. Give Consent
-You **must** obtain user consent before performing any biometric operations:
+### 1. Consents
+#### 1.1 Give Authorization Consent
+You **must** obtain user authorization consent before performing any biometric operations (Face Recognition, Voice Recognition, etc.):
   ```javascript
-  await sdk.giveConsent(true, 'John Doe');
+  await sdk.giveAuthorizationConsent(true, 'John Doe');
   // or
-  sdk.giveConsent(true, 'John Doe').then(() => {
+  sdk.giveAuthorizationConsent(true, 'John Doe').then(() => {
+    console.log('Consent given');
+  });
+  ```
+- The first argument (`true`) indicates that the user has granted consent.
+- The second argument is the user’s full name (used for record-keeping within Biometry).
+
+#### 1.2 Give Storage Consent
+You **must** obtain user consent before storing biometric data (Face Enrollment, Voice Enrollment):
+  ```javascript
+  await sdk.giveStorageConsent(true, 'John Doe');
+  // or
+  sdk.giveStorageConsent(true, 'John Doe').then(() => {
     console.log('Consent given');
   });
   ```
@@ -56,7 +71,7 @@ Enroll a user’s face for future recognition or matching:
   ```javascript
   const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
   
-  // Enroll face
+  await sdk.giveStorageConsent(true, 'John Doe');
   const faceResponse = await sdk.enrollFace(faceFile, 'John Doe');
   console.log('Face Enrollment Response:', faceResponse);
   ```
@@ -66,7 +81,7 @@ Enroll a user’s voice for future authentication checks:
   ```javascript
   const voiceFile = new File([/* voice audio bytes */], 'voice.wav', { type: 'audio/wav' });
 
-  await sdk.giveConsent(true, 'John Doe');
+  await sdk.giveStorageConsent(true, 'John Doe');
   const voiceResponse = await sdk.enrollVoice(voiceFile, 'John Doe');
   console.log('Voice Enrollment Response:', voiceResponse);
   ```
@@ -77,7 +92,7 @@ Process a user’s video for liveness checks and identity authorization:
   const phrase = "one two three four five six";
   const userFullName = 'John Doe';
   
-  await sdk.giveConsent(true, userFullName);
+  await sdk.giveAuthorizationConsent(true, userFullName);
   
   try {
     const response = await sdk.processVideo(videoFile, phrase, userFullName);
@@ -122,6 +137,28 @@ Use matchFaces to compare a reference image (e.g., a document or a captured self
     true                   // usePrefilledVideo
   );
   ```
+
+### 6. Sessions
+Session is a way to group transactions together. It is useful when you want to group transactions that are related to each other. For example, you can start a session and then use the session ID to link transactions within a unified group.
+  ```javascript
+  const sessionId = await sdk.startSession();
+
+  const videoFile = new File([/* file parts */], 'video.mp4', { type: 'video/mp4' });
+  const phrase = "one two three four five six";
+  const userFullName = 'John Doe';
+    
+  await sdk.giveAuthorizationConsent(true, userFullName, { sessionId });
+    
+  try {
+    const response = await sdk.processVideo(videoFile, phrase, userFullName, { sessionId });
+    console.log('Process Video Response:', response);
+    
+    // Retrieve the processVideoRequestId from the *response headers* called x-request-id.
+  } catch (error) {
+    console.error('Error processing video:', error);
+  }
+  ```
+
 ## Advanced Usage And Best Practices
 ### Typical FaceMatch Flow
 One common advanced scenario involves document authentication in enrollment face and face matching:
