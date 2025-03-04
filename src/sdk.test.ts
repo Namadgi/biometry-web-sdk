@@ -1,5 +1,5 @@
 import { BiometrySDK } from './sdk';
-import { VoiceEnrollmentResponse } from './types';
+import { VoiceEnrollmentResponse } from './types/biometry/enrollment';
 
 // Mock the fetch API globally
 global.fetch = jest.fn();
@@ -18,9 +18,14 @@ describe('BiometrySDK', () => {
 
   // AUTHORIZATION CONSENT
   it('should call fetch with correct headers and body when giving authorization consent', async () => {
+    const mockResponse = {
+      data: { is_consent_given: true, user_fullname: 'John Doe' }
+    };
+    
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ data: { is_consent_given: true, user_fullname: 'John Doe' } }),
+      json: async () => mockResponse,
+      headers: new Headers(),
     });
 
     const result = await sdk.giveAuthorizationConsent(true, 'John Doe');
@@ -40,7 +45,10 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual({ is_consent_given: true, user_fullname: 'John Doe', });
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {}
+    });
   });
 
   it('should throw an error if authorization consent response is not ok', async () => {
@@ -55,9 +63,14 @@ describe('BiometrySDK', () => {
 
   // STORAGE CONSENT
   it('should call fetch with correct headers and body when giving storage consent', async () => {
+    const mockResponse = {
+      data: { is_consent_given: true, user_fullname: 'John Doe' }
+    };
+
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ data: { is_consent_given: true, user_fullname: 'John Doe' } }),
+      json: async () => mockResponse,
+      headers: new Headers(),
     });
 
     const result = await sdk.giveStorageConsent(true, 'John Doe');
@@ -77,7 +90,10 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual({ is_consent_given: true, user_fullname: 'John Doe', });
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {}
+    });
   });
 
   it('should throw an error if storage consent response is not ok', async () => {
@@ -111,13 +127,14 @@ describe('BiometrySDK', () => {
   });
 
   it('should successfully enroll voice and return the response', async () => {
-    const mockResponse: VoiceEnrollmentResponse = {
+    const mockResponse = {
       status: 'good',
     };
 
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
+      headers: new Headers(),
     });
 
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
@@ -144,7 +161,10 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {}
+    });
   });
 
   // FACE ENROLLMENT
@@ -163,9 +183,13 @@ describe('BiometrySDK', () => {
       description: 'Face enrolled successfully',
     };
 
+    const mockHeaders = new Headers();
+    mockHeaders.set('X-Request-Id', 'test-request-id');
+
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
+      headers: mockHeaders
     });
 
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
@@ -188,7 +212,12 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {
+        'X-Request-Id': 'test-request-id'
+      }
+    });
   });
 
   // FACE MATCH
@@ -219,6 +248,7 @@ describe('BiometrySDK', () => {
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
+      headers: new Headers(),
     });
 
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
@@ -241,7 +271,10 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {}
+    });
   });
 
   it('should successfully match faces if processVideoRequestId is provided', async () => {
@@ -259,9 +292,13 @@ describe('BiometrySDK', () => {
       },
     };
 
+    const mockHeaders = new Headers();
+    mockHeaders.set('X-Request-Id', 'test-request-id');
+
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
+      headers: mockHeaders
     });
 
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
@@ -285,7 +322,12 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {
+        'X-Request-Id': 'test-request-id'
+      }
+    });
   });
 
   // PROCESS VIDEO
@@ -336,9 +378,13 @@ describe('BiometrySDK', () => {
       message: 'video processed successfully',
     };
 
+    const mockHeaders = new Headers();
+    mockHeaders.set('X-Request-Id', 'test-request-id');
+
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
+      headers: mockHeaders
     });
 
     const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
@@ -361,6 +407,11 @@ describe('BiometrySDK', () => {
       })
     );
 
-    expect(result).toEqual(mockResponse);
+    expect(result).toEqual({
+      body: mockResponse,
+      headers: {
+        'X-Request-Id': 'test-request-id'
+      }
+    });
   });
 });

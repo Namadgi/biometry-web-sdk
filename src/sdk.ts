@@ -1,4 +1,10 @@
-import { ConsentResponse, FaceMatchResponse, FaceEnrollmentResponse, VoiceEnrollmentResponse, DocAuthInfo, ApiResponse, FaceEnrollmentResult, ProcessVideoResponse } from "./types";
+import { ApiResponse } from "./types/internal";
+import { DocAuthInfo } from "./types/biometry/doc-auth";
+import { ConsentResponse } from "./types/biometry/consent";
+import { FaceEnrollmentResponse, VoiceEnrollmentResponse } from "./types/biometry/enrollment";
+import { FaceMatchResponse } from "./types/biometry/face-match";
+import { ProcessVideoResponse } from "./types/biometry/process-video";
+import { SessionResponse } from "./types/biometry/session";
 
 export class BiometrySDK {
   private apiKey: string;
@@ -44,10 +50,10 @@ export class BiometrySDK {
       responseHeaders["X-Request-Id"] = requestId;
     }
     
-    const data = await response.json();
+    const responseBody = await response.json();
 
     return { 
-      data: data as T, 
+      body: responseBody as T, 
       headers: responseHeaders 
     };
   }
@@ -55,15 +61,14 @@ export class BiometrySDK {
   /**
    * Starts a new Session for a user.
    * 
-   * @returns {Promise<string>} A promise resolving to the session ID.
+   * @returns {Promise<ApiResponse<SessionResponse>>} A promise resolving to the session ID.
    * @throws {Error} - If the request fails.
    */
-  async startSession(): Promise<string> {
-    const response = await this.request<{ data: string, message: string }>(
+  async startSession(): Promise<ApiResponse<SessionResponse>> {
+    return await this.request<SessionResponse>(
       '/api-gateway/sessions/start',
       'POST'
     );
-    return response.data;
   }
 
   /**
@@ -76,7 +81,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<ConsentResponse>} A promise resolving to the consent response.
+   * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
    * @throws {Error} - If the user's full name is not provided or if the request fails.
    */
   async giveAuthorizationConsent(
@@ -106,17 +111,12 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<{ data: { is_consent_given: boolean; user_fullname: string } }>(
+    return await this.request<ConsentResponse>(
       '/api-consent/consent',
       'POST',
       body,
       headers
     );
-
-    return {
-      is_consent_given: response.data.is_consent_given,
-      user_fullname: response.data.user_fullname,
-    };
   }
 
   /**
@@ -129,7 +129,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<ConsentResponse>} A promise resolving to the consent response.
+   * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
    * @throws {Error} - If the user's full name is not provided or if the request fails.
    */
   async giveStorageConsent(
@@ -139,7 +139,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<ConsentResponse> {
+  ): Promise<ApiResponse<ConsentResponse>>  {
     if (!userFullName) {
       throw new Error('User Full Name is required to give storage consent.');
     }
@@ -159,18 +159,12 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<{ data: { is_consent_given: boolean; user_fullname: string } }>(
+    return await this.request<ConsentResponse>(
       '/api-consent/strg-consent',
       'POST',
       body,
       headers
     );
-
-    return {
-      is_consent_given: response.data.is_consent_given,
-      user_fullname: response.data.user_fullname,
-    };
-    return response;
   }
 
   /**
@@ -184,7 +178,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<VoiceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
+   * @returns {Promise<ApiResponse<VoiceEnrollmentResponse>>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
   async enrollVoice(
@@ -223,13 +217,12 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<VoiceEnrollmentResponse>(
+    return await this.request<VoiceEnrollmentResponse>(
       '/api-gateway/enroll/voice',
       'POST',
       formData,
       headers
     );
-    return response;
   }
 
   /**
@@ -242,7 +235,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<FaceEnrollmentResponse>} - A promise resolving to the voice enrolling response.
+   * @returns {Promise<ApiResponse<FaceEnrollmentResponse>>} - A promise resolving to the voice enrolling response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
   async enrollFace(face: File, userFullName: string, isDocument?: boolean, props?: {
@@ -275,13 +268,12 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<FaceEnrollmentResponse>(
+    return await this.request<FaceEnrollmentResponse>(
       '/api-gateway/enroll/face',
       'POST',
       formData,
       headers
     );
-    return response;
   }
 
   /**
@@ -293,7 +285,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<DocAuthInfo>} - A promise resolving to the document authentication information.
+   * @returns {Promise<ApiResponse<DocAuthInfo>>} - A promise resolving to the document authentication information.
    */
   async checkDocAuth(
     document: File,
@@ -302,7 +294,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<DocAuthInfo> {
+  ): Promise<ApiResponse<DocAuthInfo>> {
     if (!document) throw new Error('Document image is required.');
     if (!userFullName) throw new Error('User fullname is required.');
 
@@ -321,62 +313,13 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<{ data: DocAuthInfo, message: string }>(
+    return await this.request<DocAuthInfo>(
       '/api-gateway/check-doc-auth',
       'POST',
       formData,
       headers
     );
-
-    return response.data;
-  }
-
-  /**
-   * Check the validity of a documents.
-   * 
-   * @param {File} document - Document image file.
-   * @param {string} userFullName - The full name of the user being checked.
-   * @param {Object} [props] - Optional properties for the enrollment request.
-   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<DocAuthInfo>} - A promise resolving to the document authentication information.
-   */
-  async checkDocAuth(
-    document: File,
-    userFullName: string,
-    props?: {
-      sessionId?: string,
-      deviceInfo?: object,
-    }
-  ): Promise<DocAuthInfo> {
-    if (!document) throw new Error('Document image is required.');
-    if (!userFullName) throw new Error('User fullname is required.');
-
-    const formData = new FormData();
-    formData.append('document', document);
-
-    const headers: Record<string, string> = {
-      'X-User-Fullname': userFullName,
-    };
-
-    if (props?.sessionId) {
-      headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
-    const response = await this.request<{ data: DocAuthInfo, message: string }>(
-      '/api-gateway/check-doc-auth',
-      'POST',
-      formData,
-      headers
-    );
-
-    return response.data;
-  }
+  } 
 
   /**
    * Matches a user's face from video against a reference image.
@@ -439,13 +382,12 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<FaceMatchResponse>(
+    return await this.request<FaceMatchResponse>(
       '/api-gateway/match-faces',
       'POST',
       formData,
       headers
     );
-    return response;
   }
 
   /**
@@ -458,7 +400,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns 
+   * @returns {Promise<ApiResponse<ProcessVideoResponse>>} - A promise resolving to the process video response.
    */
   async processVideo(
     video: File,
@@ -490,13 +432,11 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    const response = await this.request<any>(                                            
+    return await this.request<ProcessVideoResponse>(
       '/api-gateway/process-video',
       'POST',
       formData,
       headers
     );
-  
-    return response;
   }
 }
