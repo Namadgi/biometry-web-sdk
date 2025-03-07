@@ -27,10 +27,6 @@ export interface ProcessVideoResponse {
       log_odds: string;
     };
   };
-  result_conditions: {
-    failed_conditions: any[];
-    failed_refer_conditions: any[];
-    status: string;
-  };
+  scoring_result: "pass" | "fail" | "refer";
   message: string;
 }

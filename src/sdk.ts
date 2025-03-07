@@ -264,10 +264,6 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
     return await this.request<FaceEnrollmentResponse>(
       '/api-gateway/enroll/face',
       'POST',
