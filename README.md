@@ -41,8 +41,25 @@ const sdk = new BiometrySDK('YOUR_API_KEY');
 ### Example
 You can find an example in the example/ directory. The example demonstrates how you might integrate the BiometrySDK in a React component with the state.
 
-### 1. Consents
-#### 1.1 Give Authorization Consent
+### 1. Sessions
+Session is a way to group transactions together. It is useful when you want to group transactions that are related to each other. For example, you can start a session and then use the session ID to link transactions within a unified group.
+  ```javascript
+  const response = await sdk.startSession();
+  const sessionId = response.data;
+
+  const voiceFile = new File([/* voice audio bytes */], 'voice.wav', { type: 'audio/wav' });
+  const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
+
+  // Use the session ID to link transactions within a unified group
+  await sdk.giveStorageConsent(true, 'John Doe', { sessionId });
+  await sdk.enrollFace(faceFile, 'John Doe', { sessionId });
+  await sdk.enrollVoice(voiceFile, 'John Doe', { sessionId });
+
+  // Go to the Results page in your dashboard and see the transactions grouped by the session ID
+  ```
+
+### 2. Consents
+#### 2.1 Give Authorization Consent
 You **must** obtain user authorization consent before performing any biometric operations (Face Recognition, Voice Recognition, etc.):
   ```javascript
   await sdk.giveAuthorizationConsent(true, 'John Doe');
@@ -54,7 +71,7 @@ You **must** obtain user authorization consent before performing any biometric o
 - The first argument (`true`) indicates that the user has granted consent.
 - The second argument is the user’s full name (used for record-keeping within Biometry).
 
-#### 1.2 Give Storage Consent
+#### 2.2 Give Storage Consent
 You **must** obtain user consent before storing biometric data (Face Enrollment, Voice Enrollment):
   ```javascript
   await sdk.giveStorageConsent(true, 'John Doe');
@@ -66,7 +83,7 @@ You **must** obtain user consent before storing biometric data (Face Enrollment,
 - The first argument (`true`) indicates that the user has granted consent.
 - The second argument is the user’s full name (used for record-keeping within Biometry).
 
-### 2. Face Enrollment
+### 3. Face Enrollment
 Enroll a user’s face for future recognition or matching:
   ```javascript
   const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
@@ -76,7 +93,7 @@ Enroll a user’s face for future recognition or matching:
   console.log('Face Enrollment Response:', faceResponse);
   ```
 
-### 3. Voice Enrollment
+### 4. Voice Enrollment
 Enroll a user’s voice for future authentication checks:
   ```javascript
   const voiceFile = new File([/* voice audio bytes */], 'voice.wav', { type: 'audio/wav' });
@@ -85,7 +102,7 @@ Enroll a user’s voice for future authentication checks:
   const voiceResponse = await sdk.enrollVoice(voiceFile, 'John Doe');
   console.log('Voice Enrollment Response:', voiceResponse);
   ```
-### 4. Process Video
+### 5. Process Video
 Process a user’s video for liveness checks and identity authorization:
   ```javascript
   const videoFile = new File([/* file parts */], 'video.mp4', { type: 'video/mp4' });
@@ -97,28 +114,14 @@ Process a user’s video for liveness checks and identity authorization:
   try {
     const response = await sdk.processVideo(videoFile, phrase, userFullName);
     console.log('Process Video Response:', response);
-  
-    // Retrieve the processVideoRequestId from the *response headers* called x-request-id.
   } catch (error) {
     console.error('Error processing video:', error);
   }
   ```
-#### Additional
-- `processVideoRequestId`: After calling `sdk.processVideo()`, you typically receive a unique ID (`x-request-id`). You can pass this `processVideoRequestId` into subsequent calls (e.g., `faceMatch`) to reference the previously uploaded video frames.
-- `usePrefilledVideo`: When set to `true`, indicates that the SDK should reuse the video already on file from a previous `processVideo` call rather than requiring a new upload.
-### 5. Face match
+
+### 6. Face match
 Use matchFaces to compare a reference image (e.g., a document or a captured selfie) with a face from a video:
   ```javascript
-    /**
-   * matchFaces(
-   *   image: File,
-   *   video?: File,
-   *   userFullName?: string,
-   *   processVideoRequestId?: string,
-   *   usePrefilledVideo?: boolean,
-   *   requestUserProvidedId?: string
-   * ): Promise<FaceMatchResponse>
-   */
   const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
   const videoFile = new File([/* file parts */], 'video.mp4', { type: 'video/mp4' });
   const userFullName = 'John Doe';
@@ -128,34 +131,40 @@ Use matchFaces to compare a reference image (e.g., a document or a captured self
     videoFile,
     userFullName
   );
-  // OR
-  const faceMatchResponse = await sdk.faceMatch(
-    faceFile,              // The image containing the user's face (doc or selfie)
-    null,                  // No local video provided (we're reusing the old one)
-    'John Doe',
-    processVideoRequestId, // From the /process-video response headers
-    true                   // usePrefilledVideo
-  );
   ```
 
-### 6. Sessions
-Session is a way to group transactions together. It is useful when you want to group transactions that are related to each other. For example, you can start a session and then use the session ID to link transactions within a unified group.
+You can also reuse a video that was previously processed with the `processVideo` method by passing the same sessionId:
   ```javascript
   const sessionId = await sdk.startSession();
 
-  const videoFile = new File([/* file parts */], 'video.mp4', { type: 'video/mp4' });
-  const phrase = "one two three four five six";
+  // First, process a video with a sessionId
+  const processVideoResponse = await sdk.processVideo(videoFile, phrase, userFullName, { sessionId });
+  
+  // Later, reuse the same video for face matching by providing the sessionId
+  const faceMatchResponse = await sdk.faceMatch(
+    faceFile,
+    null, // No need to pass the video file again
+    userFullName,
+    true, // usePrefilledVideo
+    { sessionId }
+  );
+  ```
+
+### 7. DocAuth
+DocAuth is a way to authenticate a user's document. It is useful when you want to authenticate a user's document.
+  ```javascript
+  const sessionId = await sdk.startSession();
+
+  const documentFile = new File([/* file parts */], 'document.jpg', { type: 'image/jpeg' });
   const userFullName = 'John Doe';
     
   await sdk.giveAuthorizationConsent(true, userFullName, { sessionId });
     
   try {
-    const response = await sdk.processVideo(videoFile, phrase, userFullName, { sessionId });
-    console.log('Process Video Response:', response);
-    
-    // Retrieve the processVideoRequestId from the *response headers* called x-request-id.
+    const response = await sdk.checkDocAuth(documentFile, userFullName, { sessionId });
+    console.log('DocAuth Response:', response);
   } catch (error) {
-    console.error('Error processing video:', error);
+    console.error('Error checking document:', error);
   }
   ```
 
@@ -168,8 +177,8 @@ One common advanced scenario involves document authentication in enrollment face
 
 Below is a possible flow (method names in your SDK may vary slightly depending on your integration setup):
   ```javascript
-  // 1. Acquire user consent
-  await sdk.giveConsent(true, userFullName);
+  // 1. Acquire user storage consent
+  await sdk.giveStorageConsent(true, userFullName);
   
   // 2. Enroll or capture the user’s face
   //    (Either using enrollFace or processVideo, depending on your user flow)
@@ -177,14 +186,17 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   const userVideoFile = new File([/* user selfie bytes */], 'video.mp4', { type: 'video/*' });
   const enrollResponse = await sdk.enrollFace(userFaceFile, userFullName);
   
-  // 3. Face Match (Compare video face with user’s enrolled face)
+  // 3. Acquire user authorization consent. It's required to use enrolled face for using biometric data.
+  await sdk.giveAuthorizationConsent(true, userFullName);
+
+  // 4. Face Match (Compare video face with user’s enrolled face)
   const faceMatchResponse = await sdk.faceMatch(
     userFaceFile,
     userVideoFile,
     userFullName
   );
   
-  // 4. Evaluate the faceMatch result
+  // 5. Evaluate the faceMatch result
   if (faceMatchResponse.matchResult === 'match') {
     console.log('User video face matches user’s live face. Identity verified!');
   } else {
@@ -326,50 +338,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## More Information
 For more detailed information on Biometry’s API endpoints, parameters, and responses, visit the official [Biometry API Documentation](https://developer.biometrysolutions.com/overview/). If you have questions or need help, please reach out to our support team or create a GitHub issue.
 
-## Quick Reference
-- **Install**:
-  ```bash
-  npm install biometry-sdk
-  ```
-- **Consent**: (Required before enrollment/processing)
-  ```javascript
-  sdk.giveConsent(true, userFullName)
-  ```
-- **Voice Enrollment**:
-  ```javascript
-  sdk.enrollVoice(file, userFullName)
-  ```
-- **Face Enrollment**:
-  ```javascript
-  sdk.enrollFace(file, userFullName)
-  ```
-- **Face match (basic):**
-  ```javascript
-  sdk.faceMatch(image, video, userFullName);
-  ```
-- **Face match (advanced w/ reusing video or linking IDs):**
-  ```javascript
-  sdk.faceMatch(
-    image,                   // Reference image file that contains user's face.
-    video,                   // Video file that contains user's face.
-    userFullName,
-    processVideoRequestId,   // ID from the response header of /process-video endpoint.
-    usePrefilledVideo        // Pass true to use the video from the process-video endpoint.
-  );
-  ```
-- **Process Video (basic):**
-  ```javascript
-  sdk.processVideo(file, phrase, userFullName);
-  ```
-- **Process Video (advanced w/ reusing video or linking IDs):**
-  ```javascript
-  sdk.processVideo(
-    video, // Video file that you want to process
-    phrase,
-    userFullName,
-    requestUserProvidedId // An optional user-provided ID to link transactions within a unified group
-  );
-  ```
 - **UI Components:**
   - `<biometry-enrollment ...>` (face enrollment)
   - `<process-video ...>` (video enrollment)

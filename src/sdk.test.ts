@@ -304,7 +304,7 @@ describe('BiometrySDK', () => {
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
 
     const formDataSpy = jest.spyOn(FormData.prototype, 'append');
-    const result = await sdk.matchFaces(imageFile, undefined, 'User Name', 'processVideoRequestId', true);
+    const result = await sdk.matchFaces(imageFile, undefined, 'User Name', true);
 
     expect(formDataSpy).toHaveBeenCalledWith('image', imageFile);
 
@@ -315,7 +315,7 @@ describe('BiometrySDK', () => {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'X-User-Fullname': 'User Name',
-          'X-Request-Id': 'processVideoRequestId',
+          'X-Request-Id': 'test-request-id',
           'X-Use-Prefilled-Video': 'true',
         },
         body: expect.any(FormData)

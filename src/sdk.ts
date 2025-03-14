@@ -332,7 +332,6 @@ export class BiometrySDK {
     image: File,
     video?: File,
     userFullName?: string,
-    processVideoRequestId?: string,
     usePrefilledVideo?: boolean,
     props?: {
       sessionId?: string,
@@ -340,7 +339,8 @@ export class BiometrySDK {
     }
   ): Promise<ApiResponse<FaceMatchResponse>>  {
     if (!image) throw new Error('Face image is required.');
-    if ((!processVideoRequestId && !usePrefilledVideo) && !video) throw new Error('Video is required.');
+    if ((!usePrefilledVideo) && !video) throw new Error('Video is required.');
+    if (usePrefilledVideo && !props?.sessionId) throw new Error('Session ID is required to use a video from the process-video endpoint.');
 
     const formData = new FormData();
     if (video) {
@@ -354,20 +354,12 @@ export class BiometrySDK {
       headers['X-User-Fullname'] = userFullName;
     }
 
-    if (processVideoRequestId) {
-      headers['X-Request-Id'] = processVideoRequestId;
-    }
-
-    if (processVideoRequestId && usePrefilledVideo) {
+    if (usePrefilledVideo) {
       headers['X-Use-Prefilled-Video'] = 'true';
     }
 
     if (props?.sessionId) {
       headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
     if (props?.deviceInfo) {
