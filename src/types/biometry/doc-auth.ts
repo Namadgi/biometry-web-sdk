@@ -18,5 +18,6 @@ export interface DocAuthInfo {
   issuing_state: string;
   front_document_type_id: string;
   contains_rfid: boolean;
+  current_result: string;
   errors?: string[]; // List of error messages, if any
 }
