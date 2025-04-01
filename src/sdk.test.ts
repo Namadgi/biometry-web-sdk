@@ -1,5 +1,4 @@
 import { BiometrySDK } from './sdk';
-import { VoiceEnrollmentResponse } from './types/biometry/enrollment';
 
 // Mock the fetch API globally
 global.fetch = jest.fn();
@@ -21,7 +20,7 @@ describe('BiometrySDK', () => {
     const mockResponse = {
       data: { is_consent_given: true, user_fullname: 'John Doe' }
     };
-    
+
     (fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
@@ -304,7 +303,7 @@ describe('BiometrySDK', () => {
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
 
     const formDataSpy = jest.spyOn(FormData.prototype, 'append');
-    const result = await sdk.matchFaces(imageFile, undefined, 'User Name', true);
+    const result = await sdk.matchFaces(imageFile, undefined, 'User Name', true, { sessionId: 'session-id-1' });
 
     expect(formDataSpy).toHaveBeenCalledWith('image', imageFile);
 
@@ -315,7 +314,7 @@ describe('BiometrySDK', () => {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'X-User-Fullname': 'User Name',
-          'X-Request-Id': 'test-request-id',
+          'X-Session-ID': 'session-id-1',
           'X-Use-Prefilled-Video': 'true',
         },
         body: expect.any(FormData)
@@ -368,12 +367,23 @@ describe('BiometrySDK', () => {
           score: 0.99,
           imposter_prob: 0.01,
           log_odds: '1.0',
+          anchor: {
+            code: 200,
+            description: "Anchor face",
+          },
         },
       },
       result_conditions: {
         failed_conditions: [],
         failed_refer_conditions: [],
         status: 'pass',
+        code: 200,
+        description: "Matched",
+        result: 1,
+        target: {
+          code: 200,
+          description: "Target face",
+        },
       },
       message: 'video processed successfully',
     };
