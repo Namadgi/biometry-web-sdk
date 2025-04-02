@@ -3,6 +3,19 @@ import { BiometrySDK } from './sdk';
 // Mock the fetch API globally
 global.fetch = jest.fn();
 
+global.File = class File extends Blob {
+  name: string;
+  lastModified: number;
+  webkitRelativePath: string;
+
+  constructor(fileBits: BlobPart[], fileName: string, options: FilePropertyBag = { type: '' }) {
+    super(fileBits, options);
+    this.name = fileName;
+    this.lastModified = options.lastModified || Date.now();
+    this.webkitRelativePath = '';
+  }
+};
+
 describe('BiometrySDK', () => {
   const apiKey = 'test-api-key';
   const sdk = new BiometrySDK(apiKey);

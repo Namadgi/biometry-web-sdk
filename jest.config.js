@@ -1,7 +1,7 @@
 /** @type {import('jest').Config} */
 const config = {
   preset: 'ts-jest',
-  testEnvironment: 'node',
+  testEnvironment: 'jsdom',
   modulePathIgnorePatterns: ['<rootDir>/examples', '<rootDir>/dist'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
