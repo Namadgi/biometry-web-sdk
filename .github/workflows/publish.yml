@@ -35,5 +35,19 @@ jobs:
 
       - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GH_PAT }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npx semantic-release
+
+      - name: Create a new branch for release updates
+        run: |
+          git checkout -b release
+          git push origin release
+
+      - name: Create Pull Request from release to main
+        uses: peter-evans/create-pull-request@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          head: release
+          title: "Release version update"
+          body: "Automated release version update by GitHub Actions."
