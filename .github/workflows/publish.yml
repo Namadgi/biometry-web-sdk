@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'package.json'
 
 permissions:
   contents: write
@@ -16,7 +18,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required for semantic-release
+          fetch-depth: 0 # Ensure the full history is available
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -36,5 +38,4 @@ jobs:
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release
-
+        run: npm publish
