@@ -1,10 +1,7 @@
-import { BiometrySDK } from "../sdk.js";
 import ysFixWebmDuration from "fix-webm-duration";
 
 export class ProcessVideoComponent extends HTMLElement {
-  private sdk: any;
-  private apiKey: string | null = null;
-
+  private endpoint: string | null = null;
   private phrase: string;
   private previewStream: MediaStream | null = null;
   private recordedChunks: Blob[] = [];
@@ -30,26 +27,12 @@ export class ProcessVideoComponent extends HTMLElement {
   
     // Attach shadow DOM and initialize UI
     this.attachShadow({ mode: 'open' });
-    this.apiKey = this.getAttribute('api-key');
-    this.initializeSDK();
+    this.endpoint = this.getAttribute('endpoint');
     this.initializeUI();
-  }
-  
-  private initializeSDK() {
-    if (this.apiKey) {
-      this.sdk = new BiometrySDK(this.apiKey);
-    } else {
-      this.toggleState('error');
-      console.error('API key is required to initialize the SDK.');
-    }
   }
 
   connectedCallback() {
-    if (this.apiKey) {
-      this.initializeSDK();
-    } else {
-      console.error('API key is required.');
-    }
+    this.initializeUI();
   }
 
   disconnectedCallback() {
@@ -60,9 +43,8 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (name === 'api-key' && newValue !== oldValue) {
-      this.apiKey = newValue;
-      this.initializeSDK();
+    if (name === 'endpoint' && newValue !== oldValue) {
+      this.endpoint = newValue;
     }
   }
 
@@ -448,18 +430,31 @@ export class ProcessVideoComponent extends HTMLElement {
       return;
     }
 
-    if (!this.apiKey || !this.userFullname) {
+    if (!this.endpoint) {
       this.toggleState('error');
-      console.error('API key and user fullname must be provided.');
+      console.error('Endpoint must be provided.');
       return;
     }
 
     this.toggleState('loading');
 
     try {
-      const phraseInWords = this.convertPhraseToWords(this.phrase);
-      const result = await this.sdk.processVideo(this.videoFile, phraseInWords, this.userFullname);
-      console.log('Response from processVideo:', result);
+      const formData = new FormData();
+      formData.append('video', this.videoFile);
+      formData.append('phrase', this.convertPhraseToWords(this.phrase));
+      formData.append('userFullname', this.userFullname || '');
+
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Response from endpoint:', result);
       this.toggleState('success');
     } catch (error) {
       this.toggleState('error');
@@ -468,7 +463,7 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['api-key', 'user-fullname'];
+    return ['endpoint', 'user-fullname'];
   }
 
   get userFullname(): string | null {
@@ -501,10 +496,6 @@ export class ProcessVideoComponent extends HTMLElement {
 
   get currentStream(): MediaStream | null {
     return this.previewStream;
-  }
-
-  set sdkInstance(newSdk: any) {
-    this.sdk = newSdk;
   }
 
   get videoElementRef(): HTMLVideoElement {
