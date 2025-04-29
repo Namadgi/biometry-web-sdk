@@ -2,7 +2,6 @@ import { BiometryAttributes, BiometryEnrollmentState } from "./types.js";
 
 export class BiometryEnrollment extends HTMLElement {
   private readonly shadow: ShadowRoot;
-  private _endpoint: string | null = null;
   private videoElement: HTMLVideoElement | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
   private captureButton: HTMLButtonElement | null = null;
@@ -13,7 +12,6 @@ export class BiometryEnrollment extends HTMLElement {
   constructor() {
     super();
     this.shadow = this.attachShadow({ mode: "open" });
-    this._endpoint = this.getAttribute("endpoint");
 
     this.toggleState = this.toggleState.bind(this);
     this.capturePhoto = this.capturePhoto.bind(this);
@@ -49,6 +47,7 @@ export class BiometryEnrollment extends HTMLElement {
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (name === "endpoint" || name === "user-fullname") {
+      this.endpoint = newValue;
       this.validateAttributes();
     }
   }
@@ -63,20 +62,20 @@ export class BiometryEnrollment extends HTMLElement {
   }
 
   validateAttributes(): void {
-    if (!this._endpoint) {
+    if (!this.endpoint) {
       console.error("Endpoint is required.");
       this.toggleState(BiometryEnrollmentState.ErrorOther);
       return;
     }
-    
-    if (!this.userFullname) { 
-      console.error("User fullname is required."); 
+
+    if (!this.userFullname) {
+      console.error("User fullname is required.");
       this.toggleState(BiometryEnrollmentState.ErrorOther);
       return;
     }
   }
 
-  init(): void { 
+  init(): void {
     this.shadow.innerHTML = `
     <style>
       .wrapper {
@@ -112,9 +111,9 @@ export class BiometryEnrollment extends HTMLElement {
     </div>
   `;
 
-  this.attachSlotListeners();
-  this.setupCamera();
-  this.toggleState("");
+    this.attachSlotListeners();
+    this.setupCamera();
+    this.toggleState("");
   }
 
   private cleanup(): void {
@@ -137,10 +136,10 @@ export class BiometryEnrollment extends HTMLElement {
 
     const assignedCanvasElements = canvasSlot.assignedElements();
     this.canvasElement = (assignedCanvasElements.length > 0 ? assignedCanvasElements[0] : null) as HTMLCanvasElement || this.shadow.querySelector("#canvas") as HTMLCanvasElement;
-    
+
     const assignedButtonElements = buttonSlot.assignedElements();
     this.captureButton = (assignedButtonElements.length > 0 ? assignedButtonElements[0] : null) as HTMLButtonElement || this.shadow.querySelector("#button") as HTMLButtonElement;
-    
+
     if (!this.videoElement) {
       console.error("Video element is missing.");
       return;
@@ -204,7 +203,7 @@ export class BiometryEnrollment extends HTMLElement {
           formData.append('photo', file);
           formData.append('userFullname', this.userFullname || '');
 
-          const response = await fetch(this._endpoint!, {
+          const response = await fetch(this.endpoint!, {
             method: 'POST',
             body: formData
           });

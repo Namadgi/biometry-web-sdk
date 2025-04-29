@@ -1,7 +1,6 @@
 import ysFixWebmDuration from "fix-webm-duration";
 
 export class ProcessVideoComponent extends HTMLElement {
-  private endpoint: string | null = null;
   private phrase: string;
   private previewStream: MediaStream | null = null;
   private recordedChunks: Blob[] = [];
@@ -22,13 +21,24 @@ export class ProcessVideoComponent extends HTMLElement {
 
   constructor() {
     super();
-  
+
     this.phrase = this.generateDefaultPhrase();
-  
+
     // Attach shadow DOM and initialize UI
     this.attachShadow({ mode: 'open' });
-    this.endpoint = this.getAttribute('endpoint');
     this.initializeUI();
+  }
+
+  get endpoint(): string | null {
+    return this.getAttribute("endpoint");
+  }
+
+  set endpoint(value: string | null) {
+    if (value) {
+      this.setAttribute("endpoint", value);
+    } else {
+      this.removeAttribute("endpoint");
+    }
   }
 
   connectedCallback() {
@@ -195,7 +205,7 @@ export class ProcessVideoComponent extends HTMLElement {
     this.submitButton = this.getSlotElement(submitButtonSlot, '#submit-button', HTMLButtonElement);
 
     if (this.fileInput) {
-        this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+      this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
     }
     if (this.recordButton) {
       this.recordButton.addEventListener("click", () => this.startRecording());
@@ -211,7 +221,7 @@ export class ProcessVideoComponent extends HTMLElement {
   private getSlotElement<T extends HTMLElement>(
     slot: HTMLSlotElement,
     fallbackSelector: string,
-    elementType: { new (): T }
+    elementType: { new(): T }
   ): T {
     const assignedElements = slot.assignedElements();
     return (assignedElements.length > 0 ? assignedElements[0] : null) as T || this.shadowRoot!.querySelector(fallbackSelector) as T;
@@ -228,7 +238,7 @@ export class ProcessVideoComponent extends HTMLElement {
       }
     }
   }
-  
+
   removeSlotListener(slotName: string, event: string, callback: EventListener) {
     const slot = this.shadowRoot!.querySelector(`slot[name="${slotName}"]`) as HTMLSlotElement;
     if (slot) {
@@ -255,7 +265,7 @@ export class ProcessVideoComponent extends HTMLElement {
       "zero", "one", "two", "three", "four",
       "five", "six", "seven", "eight", "nine"
     ];
-  
+
     return phrase
       .split("")
       .map((digit) => digitWords[parseInt(digit, 10)])
@@ -266,7 +276,7 @@ export class ProcessVideoComponent extends HTMLElement {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       this.previewStream = stream;
-  
+
       this.videoElement.srcObject = stream;
       this.videoElement.controls = false;
       this.videoElement.play();
@@ -312,81 +322,81 @@ export class ProcessVideoComponent extends HTMLElement {
       return;
     }
     try {
-        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-            console.log('Recording already in progress.');
-            return;
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        console.log('Recording already in progress.');
+        return;
+      }
+
+      if (!this.previewStream) {
+        console.log('Initializing preview stream...');
+        this.previewStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+      }
+
+      this.videoElement.muted = true;
+      this.videoElement.srcObject = this.previewStream;
+      this.videoElement.currentTime = 0;
+
+      await this.videoElement.play();
+
+      this.mediaRecorder = new MediaRecorder(this.previewStream);
+      this.recordedChunks = [];
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
         }
+      };
 
-        if (!this.previewStream) {
-            console.log('Initializing preview stream...');
-            this.previewStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true,
-            });
-        }
+      this.mediaRecorder.onstop = () => {
+        const duration = Date.now() - this.startTime;
+        const buggyBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
 
-        this.videoElement.muted = true;
-        this.videoElement.srcObject = this.previewStream;
-        this.videoElement.currentTime = 0;
+        ysFixWebmDuration(buggyBlob, duration, { logger: false })
+          .then((fixedBlob: Blob) => {
+            this.onStopMediaRecorder(fixedBlob);
+          });
+      };
 
-        await this.videoElement.play();
+      this.mediaRecorder.start();
+      this.startTimer();
+      this.startTime = Date.now();
 
-        this.mediaRecorder = new MediaRecorder(this.previewStream);
-        this.recordedChunks = [];
-
-        this.mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                this.recordedChunks.push(event.data);
-            }
-        };
-
-        this.mediaRecorder.onstop = () => {
-            const duration = Date.now() - this.startTime;
-            const buggyBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
-            
-            ysFixWebmDuration(buggyBlob, duration, {logger: false})
-              .then((fixedBlob: Blob) => {
-                this.onStopMediaRecorder(fixedBlob);
-            });
-        };
-
-        this.mediaRecorder.start();
-        this.startTimer();
-        this.startTime = Date.now();
-
-        this.recordButton.disabled = true;
-        this.stopButton.disabled = false;
-        this.videoElement.controls = false;
+      this.recordButton.disabled = true;
+      this.stopButton.disabled = false;
+      this.videoElement.controls = false;
     } catch (error) {
-        console.error('Error starting video recording:', error);
+      console.error('Error starting video recording:', error);
     }
   }
 
   public stopRecording() {
     try {
-        if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
-            console.log('No recording in progress.');
-            return;
-        }
+      if (!this.mediaRecorder || this.mediaRecorder.state === 'inactive') {
+        console.log('No recording in progress.');
+        return;
+      }
 
-        this.mediaRecorder.stop();
+      this.mediaRecorder.stop();
 
-        if (this.previewStream) {
-            this.previewStream.getTracks().forEach(track => track.stop());
-        }
-        this.videoElement.srcObject = null;
-        this.videoElement.src = '';
-        this.videoElement.controls = false;
+      if (this.previewStream) {
+        this.previewStream.getTracks().forEach(track => track.stop());
+      }
+      this.videoElement.srcObject = null;
+      this.videoElement.src = '';
+      this.videoElement.controls = false;
 
-        this.recordButton.disabled = false;
-        this.stopButton.disabled = true;
+      this.recordButton.disabled = false;
+      this.stopButton.disabled = true;
 
-        this.mediaRecorder = null;
-        this.recordedChunks = [];
-        this.previewStream = null;
+      this.mediaRecorder = null;
+      this.recordedChunks = [];
+      this.previewStream = null;
 
     } catch (error) {
-        console.error('Error stopping video recording:', error);
+      console.error('Error stopping video recording:', error);
     }
   }
 
@@ -480,7 +490,7 @@ export class ProcessVideoComponent extends HTMLElement {
 
   get isRecording(): boolean {
     return this.mediaRecorder?.state === 'recording';
-  }  
+  }
 
   get currentPhrase(): string {
     return this.phrase;
@@ -501,7 +511,7 @@ export class ProcessVideoComponent extends HTMLElement {
   get videoElementRef(): HTMLVideoElement {
     return this.videoElement;
   }
-  
+
   get fileInputRef(): HTMLInputElement {
     return this.fileInput;
   }
