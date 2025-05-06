@@ -1,11 +1,23 @@
 {
   "name": "biometry-sdk",
-  "version": "1.3.7",
-  "main": "dist/biometry-sdk.esm.js",
-  "types": "dist/index.d.ts",
-  "module": "dist/biometry-sdk.esm.js",
-  "browser": "dist/biometry-sdk.esm.js",
+  "version": "2.0.0",
   "type": "module",
+  "main": "dist/sdk.js",
+  "module": "dist/sdk.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/sdk.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./sdk": {
+      "import": "./dist/sdk.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./ui": {
+      "import": "./dist/ui.js"
+    }
+  },
   "files": [
     "dist/**/*",
     "README.md"
