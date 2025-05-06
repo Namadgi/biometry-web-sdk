@@ -26,9 +26,10 @@ export class BiometryEnrollment extends HTMLElement {
   }
 
   set endpoint(value: string | null) {
-    if (value) {
+    const current = this.getAttribute("endpoint");
+    if (value !== null && value !== current) {
       this.setAttribute("endpoint", value);
-    } else {
+    } else if (value === null && current !== null) {
       this.removeAttribute("endpoint");
     }
   }
@@ -47,7 +48,11 @@ export class BiometryEnrollment extends HTMLElement {
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (name === "endpoint" || name === "user-fullname") {
-      this.endpoint = newValue;
+      if (name === "endpoint") {
+        this.endpoint = newValue;
+      } else if (name === "user-fullname") {
+        this.userFullname = newValue;
+      }
       this.validateAttributes();
     }
   }
@@ -59,6 +64,9 @@ export class BiometryEnrollment extends HTMLElement {
 
   disconnectedCallback(): void {
     this.cleanup();
+    if (this.captureButton) {
+      this.captureButton.removeEventListener("click", this.capturePhoto);
+    }
   }
 
   validateAttributes(): void {

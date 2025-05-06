@@ -34,15 +34,12 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 
   set endpoint(value: string | null) {
-    if (value) {
+    const current = this.getAttribute("endpoint");
+    if (value !== null && value !== current) {
       this.setAttribute("endpoint", value);
-    } else {
+    } else if (value === null && current !== null) {
       this.removeAttribute("endpoint");
     }
-  }
-
-  connectedCallback() {
-    this.initializeUI();
   }
 
   disconnectedCallback() {
@@ -52,8 +49,8 @@ export class ProcessVideoComponent extends HTMLElement {
     }
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (name === 'endpoint' && newValue !== oldValue) {
+  attributeChangedCallback(name: string, _oldValue: string | null, newValue: string | null) {
+    if (name === 'endpoint' && newValue !== this.endpoint) {
       this.endpoint = newValue;
     }
   }
@@ -392,7 +389,6 @@ export class ProcessVideoComponent extends HTMLElement {
       this.stopButton.disabled = true;
 
       this.mediaRecorder = null;
-      this.recordedChunks = [];
       this.previewStream = null;
 
     } catch (error) {
@@ -403,6 +399,7 @@ export class ProcessVideoComponent extends HTMLElement {
   private onStopMediaRecorder(blob: Blob) {
     const videoURL = URL.createObjectURL(blob);
     this.videoFile = new File([blob], 'recorded_video.webm', { type: 'video/webm' });
+    this.recordedChunks = [];
 
     this.videoElement.src = videoURL;
     this.videoElement.controls = true;
@@ -446,13 +443,19 @@ export class ProcessVideoComponent extends HTMLElement {
       return;
     }
 
+    if (!this.userFullname) {
+      this.toggleState('error');
+      console.error('User full name must be provided.');
+      return;
+    }
+
     this.toggleState('loading');
 
     try {
       const formData = new FormData();
       formData.append('video', this.videoFile);
       formData.append('phrase', this.convertPhraseToWords(this.phrase));
-      formData.append('userFullname', this.userFullname || '');
+      formData.append('userFullname', this.userFullname);
 
       const response = await fetch(this.endpoint, {
         method: 'POST',

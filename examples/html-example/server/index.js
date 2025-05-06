@@ -14,7 +14,12 @@ app.use(cors());
 
 const API_KEY = process.env.BIOMETRY_API_KEY;
 
-const sdk = new BiometrySDK(API_KEY || 'secret-api-key...');
+if (!API_KEY) {
+  console.error('BIOMETRY_API_KEY environment variable is required');
+  process.exit(1);
+}
+
+const sdk = new BiometrySDK(API_KEY);
 
 app.post('/submit-video', upload.single('video'), async (req, res) => {
   try {
