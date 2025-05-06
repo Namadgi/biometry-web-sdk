@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Process Video Component Example</title>
+</head>
+
+<body>
+  <script type="module" src="./index.js"></script>
+  <!-- <script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/ui.js"></script> -->
+
+  <process-video endpoint="http://localhost:3001/submit-video" user-fullname="John Doe">
+    <video slot="video" muted playsinline style="border-radius: 1rem;"></video>
+    <button slot="record-button">Custom Record</button>
+    <button slot="stop-button">Custom Stop</button>
+    <button slot="submit-button">Custom Submit</button>
+
+    <div slot="loading">Processing...</div>
+    <div slot="error">An error occurred. Please try again.</div>
+    <div slot="success">Video submitted successfully!</div>
+  </process-video>
+</body>
+
+</html>
