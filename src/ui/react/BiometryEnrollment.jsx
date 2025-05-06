@@ -1,10 +1,7 @@
-import React from "react";
-import { useRef } from "react";
-
-const { useEffect } = require("react");
+import React, { useRef, useEffect } from "react";
 
 const BiometryEnrollment = ({
-  apiKey,
+  endpoint,
   userFullname,
   onSuccess,
   onError,
@@ -19,36 +16,32 @@ const BiometryEnrollment = ({
     const enrollmentElement = enrollmentRef.current;
 
     if (enrollmentElement) {
-      // Set attributes for the custom element
-      enrollmentElement.setAttribute('api-key', apiKey);
-      enrollmentElement.setAttribute('user-fullname', userFullname);
+      if (endpoint) enrollmentElement.setAttribute("endpoint", endpoint);
+      if (userFullname) enrollmentElement.setAttribute("user-fullname", userFullname);
 
-      // Event handler for state changes
       const handleStateChange = (event) => {
         switch (event.detail?.state) {
-          case 'loading':
+          case "loading":
             onLoading?.();
             break;
-          case 'success':
+          case "success":
             onSuccess?.();
             break;
-          case 'error':
-            onError?.(event.detail?.message || 'An error occurred');
+          case "error":
+            onError?.(event.detail?.message || "An error occurred");
             break;
           default:
             break;
         }
       };
 
-      // Attach the event listener
-      enrollmentElement.addEventListener('stateChange', handleStateChange);
+      enrollmentElement.addEventListener("stateChange", handleStateChange);
 
-      // Cleanup the event listener on unmount
       return () => {
-        enrollmentElement.removeEventListener('stateChange', handleStateChange);
+        enrollmentElement.removeEventListener("stateChange", handleStateChange);
       };
     }
-  }, [apiKey, userFullname, onSuccess, onError, onLoading]);
+  }, [endpoint, userFullname, onSuccess, onError, onLoading]);
 
   return (
     <div

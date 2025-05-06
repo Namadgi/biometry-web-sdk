@@ -1,9 +1,7 @@
-import { BiometrySDK } from "../sdk.js";
 import { BiometryAttributes, BiometryEnrollmentState } from "./types.js";
 
 export class BiometryEnrollment extends HTMLElement {
   private readonly shadow: ShadowRoot;
-  private sdk: BiometrySDK | null;
   private videoElement: HTMLVideoElement | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
   private captureButton: HTMLButtonElement | null = null;
@@ -14,7 +12,6 @@ export class BiometryEnrollment extends HTMLElement {
   constructor() {
     super();
     this.shadow = this.attachShadow({ mode: "open" });
-    this.sdk = null;
 
     this.toggleState = this.toggleState.bind(this);
     this.capturePhoto = this.capturePhoto.bind(this);
@@ -24,15 +21,16 @@ export class BiometryEnrollment extends HTMLElement {
     return Object.values(BiometryAttributes);
   }
 
-  get apiKey(): string | null {
-    return this.getAttribute("api-key");
+  get endpoint(): string | null {
+    return this.getAttribute("endpoint");
   }
 
-  set apiKey(value: string | null) {
-    if (value) {
-      this.setAttribute("api-key", value);
-    } else {
-      this.removeAttribute("api-key");
+  set endpoint(value: string | null) {
+    const current = this.getAttribute("endpoint");
+    if (value !== null && value !== current) {
+      this.setAttribute("endpoint", value);
+    } else if (value === null && current !== null) {
+      this.removeAttribute("endpoint");
     }
   }
 
@@ -49,7 +47,12 @@ export class BiometryEnrollment extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
-    if (name === "api-key" || name === "user-fullname") {
+    if (name === "endpoint" || name === "user-fullname") {
+      if (name === "endpoint") {
+        this.endpoint = newValue;
+      } else if (name === "user-fullname") {
+        this.userFullname = newValue;
+      }
       this.validateAttributes();
     }
   }
@@ -61,23 +64,26 @@ export class BiometryEnrollment extends HTMLElement {
 
   disconnectedCallback(): void {
     this.cleanup();
+    if (this.captureButton) {
+      this.captureButton.removeEventListener("click", this.capturePhoto);
+    }
   }
 
   validateAttributes(): void {
-    if (!this.apiKey) {
-      console.error("API key is required.");
+    if (!this.endpoint) {
+      console.error("Endpoint is required.");
       this.toggleState(BiometryEnrollmentState.ErrorOther);
       return;
     }
-    
-    if (!this.userFullname) { 
-      console.error("User fullname is required."); 
+
+    if (!this.userFullname) {
+      console.error("User fullname is required.");
       this.toggleState(BiometryEnrollmentState.ErrorOther);
       return;
     }
   }
 
-  init(): void { 
+  init(): void {
     this.shadow.innerHTML = `
     <style>
       .wrapper {
@@ -113,10 +119,9 @@ export class BiometryEnrollment extends HTMLElement {
     </div>
   `;
 
-  this.initializeSDK();
-  this.attachSlotListeners();
-  this.setupCamera();
-  this.toggleState("");
+    this.attachSlotListeners();
+    this.setupCamera();
+    this.toggleState("");
   }
 
   private cleanup(): void {
@@ -129,33 +134,6 @@ export class BiometryEnrollment extends HTMLElement {
     }
   }
 
-  private initializeSDK(): void {
-    if (this.apiKey) {
-      this.sdk = new BiometrySDK(this.apiKey);
-    } else {
-      this.toggleState(BiometryEnrollmentState.ErrorOther);
-      console.error("API key is required to initialize the SDK.");
-    }
-  }
-
-  private toggleState(state: BiometryEnrollmentState | string): void {
-    const slots = [
-      BiometryEnrollmentState.Loading,
-      BiometryEnrollmentState.Success,
-      BiometryEnrollmentState.ErrorNoFace,
-      BiometryEnrollmentState.ErrorMultipleFaces,
-      BiometryEnrollmentState.ErrorNotCentered,
-      BiometryEnrollmentState.ErrorOther,
-    ];
-
-    slots.forEach((slotName) => {
-      const slot = this.shadow.querySelector(`slot[name="${slotName}"]`) as HTMLElement;
-      if (slot) {
-        slot.style.display = slotName === state ? "block" : "none";
-      }
-    });
-  }
-
   private attachSlotListeners(): void {
     const videoSlot = this.shadow.querySelector('slot[name="video"]') as HTMLSlotElement;
     const canvasSlot = this.shadow.querySelector('slot[name="canvas"]') as HTMLSlotElement;
@@ -166,10 +144,10 @@ export class BiometryEnrollment extends HTMLElement {
 
     const assignedCanvasElements = canvasSlot.assignedElements();
     this.canvasElement = (assignedCanvasElements.length > 0 ? assignedCanvasElements[0] : null) as HTMLCanvasElement || this.shadow.querySelector("#canvas") as HTMLCanvasElement;
-    
+
     const assignedButtonElements = buttonSlot.assignedElements();
     this.captureButton = (assignedButtonElements.length > 0 ? assignedButtonElements[0] : null) as HTMLButtonElement || this.shadow.querySelector("#button") as HTMLButtonElement;
-    
+
     if (!this.videoElement) {
       console.error("Video element is missing.");
       return;
@@ -201,8 +179,8 @@ export class BiometryEnrollment extends HTMLElement {
 
   private async capturePhoto(): Promise<void> {
     try {
-      if (!this.videoElement || !this.canvasElement || !this.sdk) {
-        console.error("Essential elements or SDK are not initialized.");
+      if (!this.videoElement || !this.canvasElement) {
+        console.error("Essential elements are not initialized.");
         return;
       }
 
@@ -229,36 +207,41 @@ export class BiometryEnrollment extends HTMLElement {
           }
 
           const file = new File([blob], "onboard-face.jpg", { type: "image/jpeg" });
+          const formData = new FormData();
+          formData.append('photo', file);
+          formData.append('userFullname', this.userFullname || '');
 
-          try {
-            const response = await this.sdk!.enrollFace(file, this.userFullname!);
-            const result = response.body.data.enroll_result;
+          const response = await fetch(this.endpoint!, {
+            method: 'POST',
+            body: formData
+          });
 
-            this.resultCode = result?.code;
-            this.description = result?.description || "Unknown error occurred.";
-
-            switch (this.resultCode) {
-              case 0:
-                this.toggleState(BiometryEnrollmentState.Success);
-                break;
-              case 1:
-                this.toggleState(BiometryEnrollmentState.ErrorNoFace);
-                break;
-              case 2:
-                this.toggleState(BiometryEnrollmentState.ErrorMultipleFaces);
-                break;
-              case 3:
-                this.toggleState(BiometryEnrollmentState.ErrorNotCentered);
-                break;
-              default:
-                this.toggleState(BiometryEnrollmentState.ErrorOther);
-            }
-
-            console.log("Enrollment result:", result);
-          } catch (error) {
-            console.error("Error enrolling face:", error);
-            this.toggleState(BiometryEnrollmentState.ErrorOther);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
+
+          const result = await response.json();
+          this.resultCode = result?.code;
+          this.description = result?.description || "Unknown error occurred.";
+
+          switch (this.resultCode) {
+            case 0:
+              this.toggleState(BiometryEnrollmentState.Success);
+              break;
+            case 1:
+              this.toggleState(BiometryEnrollmentState.ErrorNoFace);
+              break;
+            case 2:
+              this.toggleState(BiometryEnrollmentState.ErrorMultipleFaces);
+              break;
+            case 3:
+              this.toggleState(BiometryEnrollmentState.ErrorNotCentered);
+              break;
+            default:
+              this.toggleState(BiometryEnrollmentState.ErrorOther);
+          }
+
+          console.log("Enrollment result:", result);
         } catch (error) {
           console.error("Error in toBlob callback:", error);
           this.toggleState(BiometryEnrollmentState.ErrorOther);
@@ -268,6 +251,24 @@ export class BiometryEnrollment extends HTMLElement {
       console.error("Error capturing photo:", error);
       this.toggleState(BiometryEnrollmentState.ErrorOther);
     }
+  }
+
+  private toggleState(state: BiometryEnrollmentState | string): void {
+    const slots = [
+      BiometryEnrollmentState.Loading,
+      BiometryEnrollmentState.Success,
+      BiometryEnrollmentState.ErrorNoFace,
+      BiometryEnrollmentState.ErrorMultipleFaces,
+      BiometryEnrollmentState.ErrorNotCentered,
+      BiometryEnrollmentState.ErrorOther,
+    ];
+
+    slots.forEach((slotName) => {
+      const slot = this.shadow.querySelector(`slot[name="${slotName}"]`) as HTMLElement;
+      if (slot) {
+        slot.style.display = slotName === state ? "block" : "none";
+      }
+    });
   }
 }
 

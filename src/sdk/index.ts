@@ -1,10 +1,10 @@
-import { ApiResponse } from "./types/internal";
-import { DocAuthInfo } from "./types/biometry/doc-auth";
-import { ConsentResponse } from "./types/biometry/consent";
-import { FaceEnrollmentResponse, VoiceEnrollmentResponse } from "./types/biometry/enrollment";
-import { FaceMatchResponse } from "./types/biometry/face-match";
-import { ProcessVideoResponse } from "./types/biometry/process-video";
-import { SessionResponse } from "./types/biometry/session";
+import { ApiResponse } from "../types/internal";
+import { DocAuthInfo } from "../types/biometry/doc-auth";
+import { ConsentResponse } from "../types/biometry/consent";
+import { FaceEnrollmentResponse, VoiceEnrollmentResponse } from "../types/biometry/enrollment";
+import { FaceMatchResponse } from "../types/biometry/face-match";
+import { ProcessVideoResponse } from "../types/biometry/process-video";
+import { SessionResponse } from "../types/biometry/session";
 
 export class BiometrySDK {
   private apiKey: string;
@@ -18,7 +18,7 @@ export class BiometrySDK {
     this.apiKey = apiKey;
   }
 
-  private async request<T> (path: string, method: string, body?: any, headers?: Record<string, string>): 
+  private async request<T>(path: string, method: string, body?: any, headers?: Record<string, string>):
     Promise<ApiResponse<T>> {
     const defaultHeaders: HeadersInit = {
       Authorization: `Bearer ${this.apiKey}`,
@@ -49,12 +49,12 @@ export class BiometrySDK {
     if (requestId) {
       responseHeaders["X-Request-Id"] = requestId;
     }
-    
+
     const responseBody = await response.json();
 
-    return { 
-      body: responseBody as T, 
-      headers: responseHeaders 
+    return {
+      body: responseBody as T,
+      headers: responseHeaders
     };
   }
 
@@ -91,7 +91,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<ApiResponse<ConsentResponse>>  {
+  ): Promise<ApiResponse<ConsentResponse>> {
     if (!userFullName) {
       throw new Error('User Full Name is required to give consent.');
     }
@@ -139,7 +139,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<ApiResponse<ConsentResponse>>  {
+  ): Promise<ApiResponse<ConsentResponse>> {
     if (!userFullName) {
       throw new Error('User Full Name is required to give storage consent.');
     }
@@ -190,7 +190,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<ApiResponse<VoiceEnrollmentResponse>>  {
+  ): Promise<ApiResponse<VoiceEnrollmentResponse>> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!uniqueId) throw new Error('Unique ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
@@ -237,8 +237,8 @@ export class BiometrySDK {
   async enrollFace(face: File, userFullName: string, isDocument?: boolean, props?: {
     sessionId?: string,
     deviceInfo?: object,
-  }): 
-  Promise<ApiResponse<FaceEnrollmentResponse>> {
+  }):
+    Promise<ApiResponse<FaceEnrollmentResponse>> {
     if (!userFullName) throw new Error('User fullname is required.');
     if (!face) throw new Error('Face image is required.');
 
@@ -311,7 +311,7 @@ export class BiometrySDK {
       formData,
       headers
     );
-  } 
+  }
 
   /**
    * Matches a user's face from video against a reference image.
@@ -337,7 +337,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<ApiResponse<FaceMatchResponse>>  {
+  ): Promise<ApiResponse<FaceMatchResponse>> {
     if (!image) throw new Error('Face image is required.');
     if ((!usePrefilledVideo) && !video) throw new Error('Video is required.');
     if (usePrefilledVideo && !props?.sessionId) throw new Error('Session ID is required to use a video from the process-video endpoint.');
@@ -394,12 +394,12 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
     }
-  ): Promise<ApiResponse<ProcessVideoResponse>>  {
+  ): Promise<ApiResponse<ProcessVideoResponse>> {
     if (!video) throw new Error('Video is required.');
     if (!phrase) throw new Error('Phrase is required.');
 
     const formData = new FormData();
-    formData.append('phrase', phrase); 
+    formData.append('phrase', phrase);
     formData.append('video', video);
 
     const headers: Record<string, string> = {};

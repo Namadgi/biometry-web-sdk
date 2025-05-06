@@ -2,3 +2,5 @@
 /dist/
 .vscode/
 .DS_Store
+examples/html-example
+examples/react-example

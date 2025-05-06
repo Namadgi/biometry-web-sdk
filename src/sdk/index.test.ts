@@ -1,4 +1,4 @@
-import { BiometrySDK } from './sdk';
+import { BiometrySDK } from '.';
 
 // Mock the fetch API globally
 global.fetch = jest.fn();
