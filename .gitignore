@@ -2,5 +2,7 @@
 /dist/
 .vscode/
 .DS_Store
-examples/html-example
 examples/react-example
+examples/html-example/client/*dist
+examples/html-example/**/*node_modules
+examples/html-example/**/*.env
