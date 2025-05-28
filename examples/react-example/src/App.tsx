@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BiometrySDK } from 'biometry-sdk';
+import { BiometrySDK } from 'biometry-sdk/sdk';
 
 const App: React.FC = () => {
   // SDK Initialization state
@@ -45,13 +45,13 @@ const App: React.FC = () => {
   const handleConsentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setConsentLoading(true);
-    
+
     if (sdk && userFullName) {
       try {
         // Process BOTH Authorization and Storage consents
         const authResponse = await sdk.giveAuthorizationConsent(true, userFullName);
         const storageResponse = await sdk.giveStorageConsent(true, userFullName);
-        
+
         setConsentResult(
           `Consent Successful!\nAuthorization: ${JSON.stringify(authResponse)}\nStorage: ${JSON.stringify(storageResponse)}`
         );
@@ -93,7 +93,7 @@ const App: React.FC = () => {
   const handleVideoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setVideoLoading(true);
-    
+
     if (sdk && videoFile && phrase && userFullName) {
       try {
         const response = await sdk.processVideo(
@@ -135,7 +135,7 @@ const App: React.FC = () => {
       <div style={sectionStyle}>
         <h2>Step 1: Initialize SDK</h2>
         <p>Enter your API key to initialize the Biometry SDK.</p>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <label htmlFor="apiKey">API Key:</label>
           <input
@@ -145,15 +145,15 @@ const App: React.FC = () => {
             onChange={(e) => setApiKey(e.target.value)}
             style={{ flex: 1, padding: '8px' }}
           />
-          <button 
-            onClick={initializeSdk} 
+          <button
+            onClick={initializeSdk}
             disabled={initLoading}
             style={{ padding: '8px 16px', cursor: initLoading ? 'wait' : 'pointer' }}
           >
             {initLoading ? 'Initializing...' : 'Initialize SDK'}
           </button>
         </div>
-        
+
         {initResult && <div style={resultStyle}>{initResult}</div>}
       </div>
 
@@ -161,7 +161,7 @@ const App: React.FC = () => {
       <div style={sectionStyle}>
         <h2>Step 2: Give Consents</h2>
         <p>Provide your full name to give authorization and storage consent.</p>
-        
+
         <form onSubmit={handleConsentSubmit}>
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '5px' }}>
@@ -177,11 +177,11 @@ const App: React.FC = () => {
             </label>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={!sdk || consentLoading}
-            style={{ 
-              padding: '8px 16px', 
+            style={{
+              padding: '8px 16px',
               cursor: (!sdk || consentLoading) ? 'not-allowed' : 'pointer',
               opacity: !sdk ? 0.6 : 1
             }}
@@ -189,7 +189,7 @@ const App: React.FC = () => {
             {consentLoading ? 'Processing...' : 'Give Consent'}
           </button>
         </form>
-        
+
         {consentResult && <div style={resultStyle}>{consentResult}</div>}
       </div>
 
@@ -197,7 +197,7 @@ const App: React.FC = () => {
       <div style={sectionStyle}>
         <h2>Step 3: Enroll Face</h2>
         <p>Upload an image to enroll your face in the system.</p>
-        
+
         <form onSubmit={handleFaceEnrollSubmit}>
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '5px' }}>
@@ -227,11 +227,11 @@ const App: React.FC = () => {
             </label>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={!sdk || !userFullName || faceLoading}
-            style={{ 
-              padding: '8px 16px', 
+            style={{
+              padding: '8px 16px',
               cursor: (!sdk || !userFullName || faceLoading) ? 'not-allowed' : 'pointer',
               opacity: (!sdk || !userFullName) ? 0.6 : 1
             }}
@@ -239,7 +239,7 @@ const App: React.FC = () => {
             {faceLoading ? 'Enrolling...' : 'Enroll Face'}
           </button>
         </form>
-        
+
         {faceResult && <div style={resultStyle}>{faceResult}</div>}
       </div>
 
@@ -247,7 +247,7 @@ const App: React.FC = () => {
       <div style={sectionStyle}>
         <h2>Step 4: Process Video</h2>
         <p>Upload a video and provide a phrase for verification. Phrase should be a set of transcribed digits.</p>
-        
+
         <form onSubmit={handleVideoSubmit}>
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '5px' }}>
@@ -276,11 +276,11 @@ const App: React.FC = () => {
             </label>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={!sdk || !userFullName || videoLoading}
-            style={{ 
-              padding: '8px 16px', 
+            style={{
+              padding: '8px 16px',
               cursor: (!sdk || !userFullName || videoLoading) ? 'not-allowed' : 'pointer',
               opacity: (!sdk || !userFullName) ? 0.6 : 1
             }}
@@ -288,7 +288,7 @@ const App: React.FC = () => {
             {videoLoading ? 'Processing...' : 'Process Video'}
           </button>
         </form>
-        
+
         {videoResult && <div style={resultStyle}>{videoResult}</div>}
       </div>
     </div>
