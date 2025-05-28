@@ -1,5 +1,17 @@
 {
   "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
+    "jsx": "react-jsx",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "baseUrl": "./",
     "paths": {
       "*": [
@@ -7,4 +19,11 @@
       ]
     }
   },
+  "include": [
+    "src",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
