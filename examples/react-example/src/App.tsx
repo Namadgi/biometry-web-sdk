@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BiometrySDK } from 'biometry-sdk/sdk';
+import { BiometryEnrollment, ProcessVideo } from 'biometry-sdk/react';
 
 const App: React.FC = () => {
   // SDK Initialization state

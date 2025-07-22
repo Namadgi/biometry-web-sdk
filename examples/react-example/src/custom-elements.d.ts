@@ -1,11 +1,6 @@
 declare namespace JSX {
   interface IntrinsicElements {
-    "process-video": React.DetailedHTMLProps<
-      React.HTMLAttributes<HTMLElement>,
-      HTMLElement
-    > & {
-      onprocessComplete?: (event: CustomEvent) => void;
-      onerror?: (event: CustomEvent) => void;
-    };
+    "biometry-enrollment": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    "process-video": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
   }
 }
