@@ -41,6 +41,6 @@ export default [
       declaration: true,
       declarationDir: 'dist',
       rootDir: 'src',
-    }), , resolve(), commonjs()],
+    }), resolve(), commonjs()],
   }
 ];
