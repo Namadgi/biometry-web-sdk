@@ -124,7 +124,7 @@ export class BiometryEnrollment extends HTMLElement {
     this.toggleState("");
   }
 
-  private cleanup(): void {
+  public cleanup(): void {
     if (this.videoElement?.srcObject) {
       const tracks = (this.videoElement.srcObject as MediaStream).getTracks();
       tracks.forEach((track) => track.stop());

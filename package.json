@@ -1,6 +1,6 @@
 {
   "name": "biometry-sdk",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "type": "module",
   "main": "dist/sdk.js",
   "module": "dist/sdk.js",
@@ -12,14 +12,15 @@
     },
     "./sdk": {
       "import": "./dist/sdk.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/sdk/index.d.ts"
     },
     "./ui": {
-      "import": "./dist/ui.js"
+      "import": "./dist/ui.js",
+      "types": "./dist/ui/index.d.ts"
     },
     "./react": {
       "import": "./dist/react.js",
-      "types": "./dist/react.d.ts"
+      "types": "./dist/ui/react/index.d.ts"
     }
   },
   "files": [
