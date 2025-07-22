@@ -1,6 +1,6 @@
 {
   "name": "biometry-sdk",
-  "version": "2.0.1",
+  "version": "2.1.1",
   "type": "module",
   "main": "dist/sdk.js",
   "module": "dist/sdk.js",
@@ -12,10 +12,15 @@
     },
     "./sdk": {
       "import": "./dist/sdk.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/sdk/index.d.ts"
     },
     "./ui": {
-      "import": "./dist/ui.js"
+      "import": "./dist/ui.js",
+      "types": "./dist/ui/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react.js",
+      "types": "./dist/ui/react/index.d.ts"
     }
   },
   "files": [
@@ -24,17 +29,24 @@
   ],
   "scripts": {
     "build": "rollup -c --bundleConfigAsCjs",
-    "test": "jest",
-    "publish": "npm publish"
+    "test": "jest"
+  },
+  "peerDependencies": {
+    "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
+    "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.2",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/jest": "^29.5.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "jest": "^29.5.0",
     "jest-environment-jsdom": "^29.7.0",
     "jsdom": "^26.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "rollup": "^4.34.0",
     "ts-jest": "^29.1.0",
     "tslib": "^2.8.1",

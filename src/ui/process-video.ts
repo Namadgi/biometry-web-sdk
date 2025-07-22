@@ -1,6 +1,6 @@
 import ysFixWebmDuration from "fix-webm-duration";
 
-export class ProcessVideoComponent extends HTMLElement {
+export class ProcessVideo extends HTMLElement {
   private phrase: string;
   private previewStream: MediaStream | null = null;
   private recordedChunks: Blob[] = [];
@@ -534,4 +534,4 @@ export class ProcessVideoComponent extends HTMLElement {
   }
 }
 
-customElements.define('process-video', ProcessVideoComponent);
+customElements.define('process-video', ProcessVideo);

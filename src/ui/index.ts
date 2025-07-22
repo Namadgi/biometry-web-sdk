@@ -1,4 +1,2 @@
-import './biometry-enrollment';
-import './process-video';
-export * from './biometry-enrollment';
-export * from './process-video';
+export { BiometryEnrollment } from './biometry-enrollment';
+export { ProcessVideo } from './process-video';
