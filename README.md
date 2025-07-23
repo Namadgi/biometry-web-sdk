@@ -330,21 +330,9 @@ The **Process Video** component enables you to record, upload, and process a vid
 - All default elements and messages are functional out-of-the-box.
 - Replace slots if you want to customize the UI or functionality.
 - Call giveConsent() before using any biometric methods to ensure compliance with data processing requirements.
-   
-## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
-
-## More Information
-For more detailed information on Biometry’s API endpoints, parameters, and responses, visit the official [Biometry API Documentation](https://developer.biometrysolutions.com/overview/). If you have questions or need help, please reach out to our support team or create a GitHub issue.
-
-- **UI Components:**
-  - `<biometry-enrollment ...>` (face enrollment)
-  - `<process-video ...>` (video enrollment)
-With these **direct SDK methods**, **UI components**, and advanced **best practices** (faceEnroll + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
-
-### ID Document Scan Component
-The **ID Document Scan** component allows users to scan and upload an ID document using their camera. It is designed to be simple, secure, and easy to integrate into your application.
+### Doc Auth Component
+The **Doc Auth** component allows users to scan and upload an ID document using their camera. It is designed to be simple, secure, and easy to integrate into your application.
 
 #### Description
 This component provides a rectangular scanning area using the user's camera, a button to capture the document, and uploads a high-quality JPEG image to your backend endpoint. The backend should process the image using the Biometry SDK and your API key (never expose your API key to the client).
@@ -384,4 +372,10 @@ Here is the list of available CSS variables:
 --button-radius: 6px;
 --button-hover-bg: #0056b3;
 ```
-  
+   
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
+## More Information
+For more detailed information on Biometry’s API endpoints, parameters, and responses, visit the official [Biometry API Documentation](https://developer.biometrysolutions.com/overview/). If you have questions or need help, please reach out to our support team or create a GitHub issue.  
