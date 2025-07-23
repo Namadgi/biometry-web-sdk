@@ -306,7 +306,7 @@ export class BiometrySDK {
     }
 
     return await this.request<DocAuthInfo>(
-      '/api-gateway/check-doc-auth',
+      '/api-gateway/docauth/check',
       'POST',
       formData,
       headers

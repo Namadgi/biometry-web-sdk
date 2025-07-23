@@ -48,6 +48,32 @@ app.post('/submit-video', upload.single('video'), async (req, res) => {
   }
 });
 
+app.post('/submit-document', upload.single('document'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Missing document file' });
+    }
+
+    const { userFullname } = req.body;
+    const sessionId = req.headers['x-session-id'];
+    const deviceInfoHeader = req.headers['x-device-info'];
+    const deviceInfo = deviceInfoHeader ? JSON.parse(deviceInfoHeader) : undefined;
+
+    const file = new File([req.file.buffer], req.file.originalname, { type: req.file.mimetype });
+
+    // Use the SDK's document check method
+    const response = await sdk.checkDocAuth(file, userFullname, {
+      sessionId,
+      deviceInfo,
+    });
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error processing ID document:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Custom backend server running at http://localhost:${port}`);
 });

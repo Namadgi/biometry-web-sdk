@@ -254,7 +254,7 @@ This component provides an intuitive interface for enrollment users with their c
 
 ### Usage
 **Required attributes:**
-- `api-key`: Your Biometry API key.
+- `endpoint`: The URL of your endpoint that will process the [face enrollment](https://developer.biometrysolutions.com/api/face-enrollment/). All captured data will be sent to the endpoint.
 - `user-fullname`: The user’s full name (used in data storage and consent).
 
 **Slots:**
@@ -265,7 +265,7 @@ This component provides an intuitive interface for enrollment users with their c
 **Basic Usage**
 ```html
 <biometry-enrollment
-  api-key="your-api-key"
+  endpoint="your-endpoint-link"
   user-fullname="John Doe">
 </biometry-enrollment>
 ```
@@ -273,7 +273,7 @@ This component provides an intuitive interface for enrollment users with their c
 **Advanced Usage**
 ```html
 <biometry-enrollment
-  api-key="your-api-key"
+  endpoint="your-endpoint-link"
   user-fullname="John Doe">
   
   <video slot="video" autoplay playsinline style="width: 100%; border-radius: 10px;"></video>
@@ -296,7 +296,7 @@ The **Process Video** component enables you to record, upload, and process a vid
 **Basic Usage**
 ```html
 <process-video
-  api-key="your-api-key"
+  endpoint="your-endpoint-link"
   user-fullname="John Doe"
 ></process-video>
 ```
@@ -304,7 +304,7 @@ The **Process Video** component enables you to record, upload, and process a vid
 **Advanced Usage**
 ```html
 <process-video
-  api-key="eyJhb...apikey"
+  endpoint="your-endpoint-link"
   user-fullname="John Doe"
 >
   <!-- Custom video element -->
@@ -342,4 +342,46 @@ For more detailed information on Biometry’s API endpoints, parameters, and res
   - `<biometry-enrollment ...>` (face enrollment)
   - `<process-video ...>` (video enrollment)
 With these **direct SDK methods**, **UI components**, and advanced **best practices** (faceEnroll + faceMatch flows, reuse of video, error handling), you can build robust, privacy-conscious biometric solutions on your web application.
+
+### ID Document Scan Component
+The **ID Document Scan** component allows users to scan and upload an ID document using their camera. It is designed to be simple, secure, and easy to integrate into your application.
+
+#### Description
+This component provides a rectangular scanning area using the user's camera, a button to capture the document, and uploads a high-quality JPEG image to your backend endpoint. The backend should process the image using the Biometry SDK and your API key (never expose your API key to the client).
+
+#### Required attributes:
+- `endpoint`: The URL of your endpoint that will process the [document authentication](https://developer.biometrysolutions.com/api/doc-auth/). All captured data will be sent to this endpoint for secure processing.
+- `user-fullname`: The user’s full name (used in data storage and consent).
+
+#### Slots:
+- (No custom slots are required, but you can style the component using CSS variables.)
+
+#### Basic Usage
+```html
+<id-document-scan
+  endpoint="your-endpoint-link"
+  user-fullname="John Doe"
+></id-document-scan>
+```
+
+#### Customization
+You can override the default styles using CSS custom properties. For example:
+```css
+id-document-scan {
+  --primary-color: #4caf50;
+  --scan-area-border: 2px solid #4caf50;
+}
+```
+Here is the list of available CSS variables:
+```css
+--primary-color: #007bff;
+--button-bg: var(--primary-color);
+--button-text-color: #fff;
+--border-radius: 8px;
+--scan-area-border: 2px dashed var(--primary-color);
+--scan-area-bg: rgba(0, 123, 255, 0.05);
+--button-padding: 10px 24px;
+--button-radius: 6px;
+--button-hover-bg: #0056b3;
+```
   
