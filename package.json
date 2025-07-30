@@ -1,6 +1,6 @@
 {
   "name": "biometry-sdk",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "type": "module",
   "main": "dist/sdk.js",
   "module": "dist/sdk.js",
