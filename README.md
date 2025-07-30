@@ -1,7 +1,7 @@
 # biometry-sdk
 
 ## Overview
-The **Biometry Web SDK** is a software development kit designed to simplify the integration of Biometry's API services into your web application. Providing tools, UI components, and utilities enables biometric enrollment (face and voice), liveness checks, and user consent.
+The **Biometry Web SDK** is a software development kit designed to simplify the integration of Biometry's API services into your web application. Providing tools and utilities enables biometric enrollment (face and voice), liveness checks, and user consent.
 
 ## Table of Contents:
 - [Installation](#installation)
@@ -16,9 +16,6 @@ The **Biometry Web SDK** is a software development kit designed to simplify the 
   - [Typical FaceMatch Flow](#typical-facematch-flow)
   - [Error Handling](#error-handling)
   - [Security And Privacy Considerations](#security-and-privacy-considerations)
-- [UI Components](#ui-components)
-  - [Face Enrollment Component](#face-enrollment-component)
-  - [Process Video Component](#process-video-component)
 - [License](#license)
 - [More Information](#more-information)
 - [Quick Reference](#quick-reference)
@@ -69,7 +66,7 @@ You **must** obtain user authorization consent before performing any biometric o
   });
   ```
 - The first argument (`true`) indicates that the user has granted consent.
-- The second argument is the user’s full name (used for record-keeping within Biometry).
+- The second argument is the user's full name (used for record-keeping within Biometry).
 
 #### 2.2 Give Storage Consent
 You **must** obtain user consent before storing biometric data (Face Enrollment, Voice Enrollment):
@@ -81,10 +78,10 @@ You **must** obtain user consent before storing biometric data (Face Enrollment,
   });
   ```
 - The first argument (`true`) indicates that the user has granted consent.
-- The second argument is the user’s full name (used for record-keeping within Biometry).
+- The second argument is the user's full name (used for record-keeping within Biometry).
 
 ### 3. Face Enrollment
-Enroll a user’s face for future recognition or matching:
+Enroll a user's face for future recognition or matching:
   ```javascript
   const faceFile = new File([/* face image bytes */], 'face.jpg', { type: 'image/jpeg' });
   
@@ -94,7 +91,7 @@ Enroll a user’s face for future recognition or matching:
   ```
 
 ### 4. Voice Enrollment
-Enroll a user’s voice for future authentication checks:
+Enroll a user's voice for future authentication checks:
   ```javascript
   const voiceFile = new File([/* voice audio bytes */], 'voice.wav', { type: 'audio/wav' });
 
@@ -103,7 +100,7 @@ Enroll a user’s voice for future authentication checks:
   console.log('Voice Enrollment Response:', voiceResponse);
   ```
 ### 5. Process Video
-Process a user’s video for liveness checks and identity authorization:
+Process a user's video for liveness checks and identity authorization:
   ```javascript
   const videoFile = new File([/* file parts */], 'video.mp4', { type: 'video/mp4' });
   const phrase = "one two three four five six";
@@ -171,16 +168,16 @@ DocAuth is a way to authenticate a user's document. It is useful when you want t
 ## Advanced Usage And Best Practices
 ### Typical FaceMatch Flow
 One common advanced scenario involves document authentication in enrollment face and face matching:
-1. Face Enrollment: Capture the user’s live face or the user uploads a picture of their identity document (front side with the face)
-2. Process Video: Capture the user’s live face
-3. Face Match: Compare the extracted face from the document with the user’s live face to verify identity.
+1. Face Enrollment: Capture the user's live face or the user uploads a picture of their identity document (front side with the face)
+2. Process Video: Capture the user's live face
+3. Face Match: Compare the extracted face from the document with the user's live face to verify identity.
 
 Below is a possible flow (method names in your SDK may vary slightly depending on your integration setup):
   ```javascript
   // 1. Acquire user storage consent
   await sdk.giveStorageConsent(true, userFullName);
   
-  // 2. Enroll or capture the user’s face
+  // 2. Enroll or capture the user's face
   //    (Either using enrollFace or processVideo, depending on your user flow)
   const userFaceFile = new File([/* user selfie bytes */], 'image.jpg', { type: 'image/jpeg' });
   const userVideoFile = new File([/* user selfie bytes */], 'video.mp4', { type: 'video/*' });
@@ -189,7 +186,7 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   // 3. Acquire user authorization consent. It's required to use enrolled face for using biometric data.
   await sdk.giveAuthorizationConsent(true, userFullName);
 
-  // 4. Face Match (Compare video face with user’s enrolled face)
+  // 4. Face Match (Compare video face with user's enrolled face)
   const faceMatchResponse = await sdk.faceMatch(
     userFaceFile,
     userVideoFile,
@@ -198,7 +195,7 @@ Below is a possible flow (method names in your SDK may vary slightly depending o
   
   // 5. Evaluate the faceMatch result
   if (faceMatchResponse.matchResult === 'match') {
-    console.log('User video face matches user’s live face. Identity verified!');
+    console.log('User video face matches user's live face. Identity verified!');
   } else {
     console.log('User video face does NOT match. Additional verification needed.');
   }
@@ -229,153 +226,9 @@ Always wrap calls in try/catch and provide user-friendly messages or fallback lo
 3. **Data Minimization:** Only store data that is required for your use case.
 4. **Regulatory Compliance:** Check local regulations (GDPR, CCPA, etc.) for storing and processing biometric data.
 
-## UI Components
-In addition to direct SDK methods, the Biometry Web SDK offers reusable Web Components that handle user interactions (camera, video recording, error states) automatically.
-The Biometry Web SDK includes reusable, customizable web components for crucial features. These components are easy to embed into your application and handle the most common biometric operations with minimal setup.
-
-### Integration
-**Option 1: Using npm (Recommended for full SDK usage)**
-1. Install the SDK package via **npm**:
-    ```bash
-    npm install biometry-sdk
-    ```
-2. Import the component in your **index.js** or equivalent JavaScript file:
-    ```javascript
-    // index.js
-    import './node_modules/biometry-sdk/dist/biometry-sdk.esm.js';
-    ```
-**Option 2: Using CDN (Quick Integration)**
-```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/biometry-sdk/dist/biometry-sdk.esm.js"></script>
-```
-
-### Face Enrollment Component
-This component provides an intuitive interface for enrollment users with their cameras. It integrates directly with the `BiometrySDK backend`, managing camera capture, consent checks, and error handling.
-
-### Usage
-**Required attributes:**
-- `endpoint`: The URL of your endpoint that will process the [face enrollment](https://developer.biometrysolutions.com/api/face-enrollment/). All captured data will be sent to the endpoint.
-- `user-fullname`: The user’s full name (used in data storage and consent).
-
-**Slots:**
-- `video`: Your custom `<video>` element.
-- `button`: Custom capture button.
-- `loading`, `success`, `error-no-face`, `error-multiple-faces`, `error-not-centered`, `error-other`: Custom UI messages for different states.
-
-**Basic Usage**
-```html
-<biometry-enrollment
-  endpoint="your-endpoint-link"
-  user-fullname="John Doe">
-</biometry-enrollment>
-```
-
-**Advanced Usage**
-```html
-<biometry-enrollment
-  endpoint="your-endpoint-link"
-  user-fullname="John Doe">
-  
-  <video slot="video" autoplay playsinline style="width: 100%; border-radius: 10px;"></video>
-  <button slot="button" style="padding: 10px 20px; font-size: 16px;">Capture</button>
-  
-  <!-- Custom Status Messages -->
-  <div slot="loading">Please wait while we process your photo...</div>
-  <div slot="success">Congratulations! You have been enrolled.</div>
-  <div slot="error-no-face">No face detected. Make sure your face is visible.</div>
-  <div slot="error-multiple-faces">Multiple faces detected. Please try again alone.</div>
-  <div slot="error-not-centered">Align your face with the center of the screen.</div>
-  <div slot="error-other">Oops! Something went wrong. Please try again.</div>
-</biometry-enrollment>
-```
-
-### Process Video Component
-The **Process Video** component enables you to record, upload, and process a video within your application. It integrates with Biometry's services to check liveness and authorize the user.
-
-### Usage
-**Basic Usage**
-```html
-<process-video
-  endpoint="your-endpoint-link"
-  user-fullname="John Doe"
-></process-video>
-```
-
-**Advanced Usage**
-```html
-<process-video
-  endpoint="your-endpoint-link"
-  user-fullname="John Doe"
->
-  <!-- Custom video element -->
-  <video slot="video" muted playsinline style="border-radius: 1rem;"></video>
-
-  <!-- Custom buttons -->
-  <button slot="record-button">Custom Record</button>
-  <button slot="stop-button">Custom Stop</button>
-  
-  <!-- Custom file input -->
-  <input slot="file-input" type="file" accept="video/*" />
-
-  <!-- Custom submit button -->
-  <button slot="submit-button">Custom Submit</button>
-
-  <!-- Custom messages -->
-  <div slot="loading">Processing...</div>
-  <div slot="error">An error occurred. Please try again.</div>
-  <div slot="success">Video submitted successfully!</div>
-</process-video>
-```
-**Note:**
-- All default elements and messages are functional out-of-the-box.
-- Replace slots if you want to customize the UI or functionality.
-- Call giveConsent() before using any biometric methods to ensure compliance with data processing requirements.
-
-### Doc Auth Component
-The **Doc Auth** component allows users to scan and upload an ID document using their camera. It is designed to be simple, secure, and easy to integrate into your application.
-
-#### Description
-This component provides a rectangular scanning area using the user's camera, a button to capture the document, and uploads a high-quality JPEG image to your backend endpoint. The backend should process the image using the Biometry SDK and your API key (never expose your API key to the client).
-
-#### Required attributes:
-- `endpoint`: The URL of your endpoint that will process the [document authentication](https://developer.biometrysolutions.com/api/doc-auth/). All captured data will be sent to this endpoint for secure processing.
-- `user-fullname`: The user’s full name (used in data storage and consent).
-
-#### Slots:
-- (No custom slots are required, but you can style the component using CSS variables.)
-
-#### Basic Usage
-```html
-<id-document-scan
-  endpoint="your-endpoint-link"
-  user-fullname="John Doe"
-></id-document-scan>
-```
-
-#### Customization
-You can override the default styles using CSS custom properties. For example:
-```css
-id-document-scan {
-  --primary-color: #4caf50;
-  --scan-area-border: 2px solid #4caf50;
-}
-```
-Here is the list of available CSS variables:
-```css
---primary-color: #007bff;
---button-bg: var(--primary-color);
---button-text-color: #fff;
---border-radius: 8px;
---scan-area-border: 2px dashed var(--primary-color);
---scan-area-bg: rgba(0, 123, 255, 0.05);
---button-padding: 10px 24px;
---button-radius: 6px;
---button-hover-bg: #0056b3;
-```
-   
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
 ## More Information
-For more detailed information on Biometry’s API endpoints, parameters, and responses, visit the official [Biometry API Documentation](https://developer.biometrysolutions.com/overview/). If you have questions or need help, please reach out to our support team or create a GitHub issue.  
+For more detailed information on Biometry's API endpoints, parameters, and responses, visit the official [Biometry API Documentation](https://developer.biometrysolutions.com/overview/). If you have questions or need help, please reach out to our support team or create a GitHub issue.  

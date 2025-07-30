@@ -13,14 +13,6 @@
     "./sdk": {
       "import": "./dist/sdk.js",
       "types": "./dist/sdk/index.d.ts"
-    },
-    "./ui": {
-      "import": "./dist/ui.js",
-      "types": "./dist/ui/index.d.ts"
-    },
-    "./react": {
-      "import": "./dist/react.js",
-      "types": "./dist/ui/react/index.d.ts"
     }
   },
   "files": [

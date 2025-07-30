@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BiometrySDK } from 'biometry-sdk/sdk';
-import { BiometryEnrollment, ProcessVideo } from 'biometry-sdk/react';
+// UI components have been removed from the SDK
 
 const App: React.FC = () => {
   // SDK Initialization state
