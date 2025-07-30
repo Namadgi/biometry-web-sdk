@@ -3,6 +3,8 @@
 ## Overview
 The **Biometry Web SDK** is a software development kit designed to simplify the integration of Biometry's API services into your web application. Providing tools and utilities enables biometric enrollment (face and voice), liveness checks, and user consent.
 
+We also have UI component library for [React](https://www.npmjs.com/package/biometry-react-components). You can you this SDK in combination with it.
+
 ## Table of Contents:
 - [Installation](#installation)
 - [Basic Usage (Direct SDK Methods)](#basic-usage-direct-sdk-methods)
