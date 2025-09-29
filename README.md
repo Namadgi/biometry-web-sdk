@@ -233,7 +233,7 @@ Always wrap calls in try/catch and provide user-friendly messages or fallback lo
 
 ### Header Retrieval
 In addition to the response body, all SDK calls also return response headers.  
-This is useful for retrieving metadata such as request IDs, rate limits, or debugging information.
+This is useful for retrieving metadata such as request and session IDs, or debugging information.
 
 Each API call returns an object of type:
 
