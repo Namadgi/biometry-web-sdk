@@ -20,6 +20,7 @@ We also have UI component library for [React](https://www.npmjs.com/package/biom
 - [Advanced Usage And Best Practices](#advanced-usage-and-best-practices)
   - [Typical FaceMatch Flow](#typical-facematch-flow)
   - [Error Handling](#error-handling)
+  - [Header Retrieval](#header-retrieval)
   - [Security And Privacy Considerations](#security-and-privacy-considerations)
 - [License](#license)
 - [More Information](#more-information)
@@ -229,6 +230,35 @@ Always wrap calls in try/catch and provide user-friendly messages or fallback lo
     console.error('Face match error:', error);
   }
   ```
+
+### Header Retrieval
+In addition to the response body, all SDK calls also return response headers.  
+This is useful for retrieving metadata such as request IDs, rate limits, or debugging information.
+
+Each API call returns an object of type:
+
+  ```ts
+  export interface ApiResponse<T> {
+    body: T;
+    headers: Record<string, string>;
+  }
+  ```
+  For example, when calling the processVideo method, you can access both the response data and headers:
+  ```ts
+  try {
+    const response = await sdk.processVideo(videoFile, "12345678", "John Doe");
+
+    // Access the response body
+    console.log("Process video result:", response.body);
+
+    // Access headers (e.g., request ID)
+    console.log("Request ID:", response.headers["x-request-id"]);
+  } catch (error) {
+    console.error("Process video failed:", error);
+  }
+  ```
+  This pattern applies to all SDK methods, so you can always extract useful metadata from headers in addition to the main response.
+
   
 ### Security And Privacy Considerations
 1. **Protect Your API Key:** Avoid storing your API key in client-side code if possible. Use environment variables or server-side proxies.

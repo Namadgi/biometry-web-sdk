@@ -43,12 +43,11 @@ export class BiometrySDK {
       throw new Error(`Error ${response.status}: ${errorMessage}`);
     }
 
-    // Extract response headers
+    // 🔹 Extract ALL response headers
     const responseHeaders: Record<string, string> = {};
-    const requestId = response.headers.get("X-Request-Id");
-    if (requestId) {
-      responseHeaders["X-Request-Id"] = requestId;
-    }
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
 
     const responseBody = await response.json();
 
