@@ -168,7 +168,7 @@ DocAuth is a way to authenticate a user's document. It is useful when you want t
   await sdk.giveAuthorizationConsent(true, userFullName, { sessionId });
     
   try {
-    const response = await sdk.checkDocAuth(documentFile, userFullName, { sessionId });
+    const response = await sdk.checkDocAuth(documentFile, userFullName, { sessionId, inHouseCheck: true });
     console.log('DocAuth Response:', response);
   } catch (error) {
     console.error('Error checking document:', error);
