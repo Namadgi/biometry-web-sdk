@@ -284,6 +284,7 @@ export class BiometrySDK {
     props?: {
       sessionId?: string,
       deviceInfo?: object,
+      inHouseCheck?: boolean,
     }
   ): Promise<ApiResponse<DocAuthInfo>> {
     if (!document) throw new Error('Document image is required.');
@@ -302,6 +303,10 @@ export class BiometrySDK {
 
     if (props?.deviceInfo) {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
+    }
+
+    if (props?.inHouseCheck) {
+      headers['X-Inhouse-Docauth'] = "true";
     }
 
     return await this.request<DocAuthInfo>(
