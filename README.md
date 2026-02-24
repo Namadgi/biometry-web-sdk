@@ -11,7 +11,6 @@ The official JavaScript/TypeScript SDK for integrating [Biometry](https://biomet
 - **Face enrollment** — register a user's face from a photo or ID document
 - **Voice enrollment** — register a user's voice for speaker verification
 - **Video processing** — liveness detection, active speaker detection, face recognition, voice recognition, and visual speech recognition in one call
-- **Auto-enrollment** — automatic face and voice enrollment during video processing when both consents are given
 - **Face matching** — compare a reference image against a video to verify identity
 - **Document authentication** — extract and validate data from ID documents (passports, ID cards, etc.)
 - **Full TypeScript support** — ships with complete type definitions
@@ -46,7 +45,7 @@ The API key is used as a Bearer token for all requests to the Biometry API. An e
 
 All gateway API responses follow a standard envelope format:
 
-```json
+```text
 {
   "data": { ... },
   "scoring_result": "pass" | "fail" | "refer" | { ... },
@@ -686,17 +685,14 @@ Common error scenarios:
 
 ## Examples
 
-Working examples are available in the [`examples/`](./examples) directory:
-
-- **[React example](./examples/react-example)** — full React app demonstrating SDK initialization, consent, face enrollment, and video processing
-- **[HTML example](./examples/html-example)** — vanilla JavaScript integration without any framework
+If you require additional implementation guidance, please refer to the official API documentation or contact our support team.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
+The full license text is available in the source repository.
 
 ## Support
 
 - [Biometry API Documentation](https://developer.biometrysolutions.com/overview/)
-- [GitHub Issues](https://github.com/nicoogamer/biometry-web-sdk/issues)
 - Contact our support team at [support@biometrysolutions.com](mailto:support@biometrysolutions.com)
