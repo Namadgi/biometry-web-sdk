@@ -1,5 +1,11 @@
 type Base64String = string & { readonly __brand: unique symbol };
 
+export interface DocAuthResponse {
+  data: DocAuthInfo;
+  scoring_result: string;
+  message: string;
+}
+
 export interface DocAuthInfo {
   document_type: string;
   country_code: string;
@@ -18,6 +24,17 @@ export interface DocAuthInfo {
   issuing_state: string;
   front_document_type_id: string;
   contains_rfid: boolean;
-  current_result: string;
-  errors?: string[]; // List of error messages, if any
+  face_image_base64?: string;
+  current_result?: string;
+  mrz_validation?: MRZValidation;
+  errors?: string[];
+}
+
+export interface MRZValidation {
+  has_mrz: boolean;
+  raw_mrz?: string;
+  check_digits_valid: boolean;
+  fields_match: boolean;
+  discrepancies?: string[];
+  validation_performed: boolean;
 }
