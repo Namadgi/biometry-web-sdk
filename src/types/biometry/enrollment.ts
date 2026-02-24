@@ -1,8 +1,12 @@
 import { DocAuthInfo } from "./doc-auth";
 
 // VOICE ENROLLMENT
-// TODO: add all fields for voice enrollment
 export interface VoiceEnrollmentResponse {
+  data: VoiceEnrollmentData;
+  message: string;
+}
+
+export interface VoiceEnrollmentData {
   status: "good" | "qafailed" | "enrolled" | "error";
   qa_combined: QualityResultList | null;
   qa_list: QualityResultList[];
@@ -35,9 +39,9 @@ interface RecognitionHypothesis {
 // FACE ENROLLMENT
 export interface FaceEnrollmentResponse {
   data: {
-    enroll_result: FaceEnrollmentResult;
+    enrollment_result: FaceEnrollmentResult;
     document_auth?: DocAuthInfo;
-  },
+  };
   message?: string;
   error?: string;
   scoring_result?: string;
