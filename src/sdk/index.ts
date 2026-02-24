@@ -1,5 +1,5 @@
 import { ApiResponse } from "../types/internal";
-import { DocAuthInfo } from "../types/biometry/doc-auth";
+import { DocAuthResponse } from "../types/biometry/doc-auth";
 import { ConsentResponse } from "../types/biometry/consent";
 import { FaceEnrollmentResponse, VoiceEnrollmentResponse } from "../types/biometry/enrollment";
 import { FaceMatchResponse } from "../types/biometry/face-match";
@@ -276,7 +276,7 @@ export class BiometrySDK {
    * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
    *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<ApiResponse<DocAuthInfo>>} - A promise resolving to the document authentication information.
+   * @returns {Promise<ApiResponse<DocAuthResponse>>} - A promise resolving to the document authentication response.
    */
   async checkDocAuth(
     document: File,
@@ -286,7 +286,7 @@ export class BiometrySDK {
       deviceInfo?: object,
       inHouseCheck?: boolean,
     }
-  ): Promise<ApiResponse<DocAuthInfo>> {
+  ): Promise<ApiResponse<DocAuthResponse>> {
     if (!document) throw new Error('Document image is required.');
     if (!userFullName) throw new Error('User fullname is required.');
 
@@ -309,7 +309,7 @@ export class BiometrySDK {
       headers['X-Inhouse-Docauth'] = "true";
     }
 
-    return await this.request<DocAuthInfo>(
+    return await this.request<DocAuthResponse>(
       '/api-gateway/docauth/check',
       'POST',
       formData,
