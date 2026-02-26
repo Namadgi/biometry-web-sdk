@@ -307,6 +307,8 @@ export class BiometrySDK {
 
     if (props?.inHouseCheck) {
       headers['X-Inhouse-Docauth'] = "true";
+    } else {
+      headers['X-Inhouse-Docauth'] = "false";
     }
 
     return await this.request<DocAuthResponse>(

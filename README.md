@@ -692,7 +692,6 @@ If you require additional implementation guidance, please refer to the official 
 This project is licensed under the MIT License.
 The full license text is available in the source repository.
 
-## Support
+## API Documentation
 
 - [Biometry API Documentation](https://developer.biometrysolutions.com/overview/)
-- Contact our support team at [support@biometrysolutions.com](mailto:support@biometrysolutions.com)
