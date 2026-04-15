@@ -59,14 +59,41 @@ export class BiometrySDK {
 
   /**
    * Starts a new Session for a user.
-   * 
+   *
+   * @param {Object} [props] - Optional properties.
+   * @param {boolean} [props.warmup] - If true, triggers ML services warmup in the background.
    * @returns {Promise<ApiResponse<SessionResponse>>} A promise resolving to the session ID.
    * @throws {Error} - If the request fails.
    */
-  async startSession(): Promise<ApiResponse<SessionResponse>> {
+  async startSession(props?: { warmup?: boolean }): Promise<ApiResponse<SessionResponse>> {
+    const query = props?.warmup ? '?warmup=true' : '';
     return await this.request<SessionResponse>(
-      '/api-gateway/sessions/start',
+      `/api-gateway/sessions/start${query}`,
       'POST'
+    );
+  }
+
+  /**
+   * Ends an existing session.
+   *
+   * @param {string} sessionId - The ID of the session to end.
+   * @param {Object} [props] - Optional properties.
+   * @param {string} [props.phoneNumber] - Phone number for SIM-swap fraud check via CAMARA API.
+   * @returns {Promise<ApiResponse<{ message: string }>>} A promise resolving to the result message.
+   * @throws {Error} - If the request fails.
+   */
+  async endSession(sessionId: string, props?: { phoneNumber?: string }): Promise<ApiResponse<{ message: string }>> {
+    if (!sessionId) throw new Error('Session ID is required.');
+
+    const body: Record<string, string> = {};
+    if (props?.phoneNumber) {
+      body['phone_number'] = props.phoneNumber;
+    }
+
+    return await this.request<{ message: string }>(
+      `/api-gateway/sessions/end/${sessionId}`,
+      'POST',
+      body
     );
   }
 
@@ -168,10 +195,10 @@ export class BiometrySDK {
 
   /**
    * Enrolls a user's voice for biometric authentication.
-   * 
+   * The user identity is derived from the userFullName parameter (sent as X-User-Fullname header).
+   *
    * @param {File} audio - The audio file containing the user's voice.
    * @param {string} userFullName - The full name of the user being enrolled.
-   * @param {string} uniqueId - A unique identifier for the enrolling process.
    * @param {string} phrase - The phrase spoken in the audio file.
    * @param {Object} [props] - Optional properties for the enrollment request.
    * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
@@ -183,7 +210,6 @@ export class BiometrySDK {
   async enrollVoice(
     audio: File,
     userFullName: string,
-    uniqueId: string,
     phrase: string,
     props?: {
       sessionId?: string,
@@ -191,12 +217,10 @@ export class BiometrySDK {
     }
   ): Promise<ApiResponse<VoiceEnrollmentResponse>> {
     if (!userFullName) throw new Error('User fullname is required.');
-    if (!uniqueId) throw new Error('Unique ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
     if (!audio) throw new Error('Audio file is required.');
 
     const formData = new FormData();
-    formData.append('unique_id', uniqueId);
     formData.append('phrase', phrase);
     formData.append('voice', audio);
 
@@ -268,14 +292,15 @@ export class BiometrySDK {
   }
 
   /**
-   * Check the validity of a documents.
-   * 
-   * @param {File} document - Document image file.
+   * Check the validity of a document.
+   *
+   * @param {File} document - Document image file (jpg/jpeg/png).
    * @param {string} userFullName - The full name of the user being checked.
-   * @param {Object} [props] - Optional properties for the enrollment request.
-   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {Object} [props] - Optional properties for the request.
+   * @param {string} [props.sessionId] - Session ID to link this check with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
+   * @param {boolean} [props.inHouseCheck] - If false, uses external IDScan flow. Defaults to true (in-house GPT+ML flow).
+   * @param {boolean} [props.mrzValidation] - If true, enables MRZ validation in the in-house flow.
    * @returns {Promise<ApiResponse<DocAuthResponse>>} - A promise resolving to the document authentication response.
    */
   async checkDocAuth(
@@ -285,6 +310,7 @@ export class BiometrySDK {
       sessionId?: string,
       deviceInfo?: object,
       inHouseCheck?: boolean,
+      mrzValidation?: boolean,
     }
   ): Promise<ApiResponse<DocAuthResponse>> {
     if (!document) throw new Error('Document image is required.');
@@ -305,10 +331,12 @@ export class BiometrySDK {
       headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
     }
 
-    if (props?.inHouseCheck) {
-      headers['X-Inhouse-Docauth'] = "true";
-    } else {
+    if (props?.inHouseCheck === false) {
       headers['X-Inhouse-Docauth'] = "false";
+    }
+
+    if (props?.mrzValidation) {
+      headers['X-Inhouse-MRZ'] = "true";
     }
 
     return await this.request<DocAuthResponse>(
@@ -321,17 +349,16 @@ export class BiometrySDK {
 
   /**
    * Matches a user's face from video against a reference image.
-   * 
+   *
    * @param {File} image - Reference image file that contains user's face.
-   * @param {string} video - Video file that contains user's face.
-   * @param {string} userFullName - Pass the full name of end-user to process Voice and Face recognition services.
-   * @param {string} processVideoRequestId - ID from the response header of /process-video endpoint.
-   * @param {boolean} usePrefilledVideo - Pass true to use the video from the process-video endpoint.
-   * @param {Object} [props] - Optional properties for the enrollment request.
-   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {File} [video] - Video file that contains user's face. Required unless usePrefilledVideo is true.
+   * @param {string} [userFullName] - Full name of the end-user (used for session validation).
+   * @param {boolean} [usePrefilledVideo] - If true, reuses the video captured in the process-video step of the
+   *                                        same session. Requires props.sessionId.
+   * @param {Object} [props] - Optional properties for the request.
+   * @param {string} [props.sessionId] - Session ID. Required when usePrefilledVideo is true.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<FaceMatchResponse>} - A promise resolving to the voice enrolling response.
+   * @returns {Promise<ApiResponse<FaceMatchResponse>>} - A promise resolving to the face match response.
    * @throws {Error} - If required parameters are missing or the request fails.
    */
   async matchFaces(
@@ -381,15 +408,16 @@ export class BiometrySDK {
   }
 
   /**
-   * Process the video through Biometry services to check liveness and authorize user
-   * 
+   * Process the video through Biometry services to check liveness and authorize user.
+   *
    * @param {File} video - Video file that you want to process.
    * @param {string} phrase - Set of numbers that user needs to say out loud in the video.
-   * @param {string} userFullName - Pass the full name of end-user to process Voice and Face recognition services.
-   * @param {Object} [props] - Optional properties for the enrollment request.
-   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
+   * @param {string} [userFullName] - Full name of the end-user. Required for Voice and Face recognition services.
+   * @param {Object} [props] - Optional properties for the request.
+   * @param {string} [props.sessionId] - Session ID to link this request with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
+   * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits'). Defaults to en_digits on the server.
+   * @param {string} [props.trigger] - Action trigger that initiated this request (e.g. 'authentication', 'registration', 'confirmation').
    * @returns {Promise<ApiResponse<ProcessVideoResponse>>} - A promise resolving to the process video response.
    */
   async processVideo(
@@ -399,6 +427,8 @@ export class BiometrySDK {
     props?: {
       sessionId?: string,
       deviceInfo?: object,
+      vocabulary?: string,
+      trigger?: string,
     }
   ): Promise<ApiResponse<ProcessVideoResponse>> {
     if (!video) throw new Error('Video is required.');
@@ -407,6 +437,14 @@ export class BiometrySDK {
     const formData = new FormData();
     formData.append('phrase', phrase);
     formData.append('video', video);
+
+    if (props?.vocabulary) {
+      formData.append('vocabulary', props.vocabulary);
+    }
+
+    if (props?.trigger) {
+      formData.append('trigger', props.trigger);
+    }
 
     const headers: Record<string, string> = {};
 
