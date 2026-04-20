@@ -121,21 +121,16 @@ describe('BiometrySDK', () => {
   // VOICE ENROLLMENT
   it('should throw an error if user fullname is missing', async () => {
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
-    await expect(sdk.enrollVoice(audioFile, '', 'uniqueId', 'phrase')).rejects.toThrowError('User fullname is required.');
-  });
-
-  it('should throw an error if unique ID is missing', async () => {
-    const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
-    await expect(sdk.enrollVoice(audioFile, 'User Name', '', 'phrase')).rejects.toThrowError('Unique ID is required.');
+    await expect(sdk.enrollVoice(audioFile, '', 'phrase')).rejects.toThrowError('User fullname is required.');
   });
 
   it('should throw an error if phrase is missing', async () => {
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
-    await expect(sdk.enrollVoice(audioFile, 'User Name', 'uniqueId', '')).rejects.toThrowError('Phrase is required.');
+    await expect(sdk.enrollVoice(audioFile, 'User Name', '')).rejects.toThrowError('Phrase is required.');
   });
 
   it('should throw an error if audio file is missing', async () => {
-    await expect(sdk.enrollVoice(null as unknown as File, 'User Name', 'uniqueId', 'phrase')).rejects.toThrowError('Audio file is required.');
+    await expect(sdk.enrollVoice(null as unknown as File, 'User Name', 'phrase')).rejects.toThrowError('Audio file is required.');
   });
 
   it('should successfully enroll voice and return the response', async () => {
@@ -151,13 +146,11 @@ describe('BiometrySDK', () => {
 
     const audioFile = new File(['audio data'], 'audio.wav', { type: 'audio/wav' });
     const userFullName = 'User Name';
-    const uniqueId = 'uniqueId';
     const phrase = 'phrase';
 
     const formDataSpy = jest.spyOn(FormData.prototype, 'append');
-    const result = await sdk.enrollVoice(audioFile, userFullName, uniqueId, phrase);
+    const result = await sdk.enrollVoice(audioFile, userFullName, phrase);
 
-    expect(formDataSpy).toHaveBeenCalledWith('unique_id', uniqueId);
     expect(formDataSpy).toHaveBeenCalledWith('phrase', phrase);
     expect(formDataSpy).toHaveBeenCalledWith('voice', audioFile);
 
