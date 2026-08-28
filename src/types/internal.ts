@@ -37,7 +37,7 @@ export interface SuccessEnvelope<T = unknown> {
  */
 export interface ApiErrorBody {
   code: string;
-  message: string | Array<{ field?: string; message: string }> | unknown;
+  message: string | Array<{ field?: string; message: string }>;
 }
 
 export interface ErrorEnvelope {

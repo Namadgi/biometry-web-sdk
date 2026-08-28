@@ -15,7 +15,7 @@ Migrated the SDK to the **Biometry API v2** gateway (`/api-gateway/v2`). This is
 - **Session ID** is now at `response.body.data.session_id` (was `response.body.data`).
 - **Response shape:** all gateway responses are the v2 success envelope (`{ data, decision?, meta }`).
 - **Errors:** non-2xx gateway responses now throw `BiometryApiError` (exposes `status`, `code`, `meta`).
-- `endSession` now targets `POST /v2/sessions/{id}/end`.
+- `endSession` now targets `POST /api-gateway/v2/sessions/{id}/end`.
 
 ### Unchanged
 

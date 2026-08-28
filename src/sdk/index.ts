@@ -126,7 +126,10 @@ export class BiometrySDK {
     if (typeof error === 'string') {
       message = error;
     } else if (error && typeof error === 'object') {
-      code = error.code;
+      // The backend is trusted to send a string code, but a nested object or
+      // number would otherwise reach BiometryApiError.code untyped and render
+      // as "[object Object]" inside the message.
+      code = typeof error.code === 'string' ? error.code : undefined;
       message = typeof error.message === 'string'
         ? error.message
         : error.message != null ? JSON.stringify(error.message) : undefined;
@@ -184,7 +187,7 @@ export class BiometrySDK {
     const body = props?.phoneNumber ? { phone_number: props.phoneNumber } : undefined;
 
     return await this.request<SuccessEnvelope>(
-      `${BiometrySDK.GATEWAY_V2}/sessions/${sessionId}/end`,
+      `${BiometrySDK.GATEWAY_V2}/sessions/${encodeURIComponent(sessionId)}/end`,
       'POST',
       body
     );

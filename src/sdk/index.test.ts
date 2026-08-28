@@ -331,6 +331,10 @@ describe('BiometrySDK', () => {
 
     const imageFile = new File(['image data'], 'image.jpg', { type: 'image/jpeg' });
     const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
-    await expect(sdk.matchFaces(imageFile, 'user-1', { video: videoFile })).rejects.toBeInstanceOf(BiometryApiError);
+    await expect(sdk.matchFaces(imageFile, 'user-1', { video: videoFile })).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_request',
+      message: `Error 400 [invalid_request]: ${JSON.stringify([{ field: 'user_id', message: 'required' }])}`,
+    });
   });
 });

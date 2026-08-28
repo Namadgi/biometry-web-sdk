@@ -273,6 +273,9 @@ await sdk.endSession(sessionId);
 ```typescript
 const sdk = new BiometrySDK('YOUR_API_KEY');
 
+// e.g. from an <input type="file"> element
+const documentFile = fileInput.files[0];
+
 const result = await sdk.checkDocAuth(documentFile, { provider: 'inhouse' });
 const doc = result.body.data;
 console.log(`${doc.first_name} ${doc.last_name}`);
