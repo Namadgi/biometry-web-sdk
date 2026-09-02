@@ -1,11 +1,17 @@
 name: Publish to npm
 
+# Publishing is a manual step, run from a maintainer's machine:
+#   npm ci && npm test && npm run build && npm publish --otp=<code>
+# The npm account requires 2FA on publish, which CI cannot satisfy, and an
+# automatic release on every push to main gave no chance to choose a dist-tag.
+# This workflow stays available on demand for the test/build gate.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Run npm publish after the tests (requires a 2FA-exempt NPM_TOKEN)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -36,6 +42,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
+        if: ${{ inputs.publish }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish
