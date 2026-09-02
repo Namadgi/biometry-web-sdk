@@ -1,43 +1,33 @@
-export interface ProcessVideoResponse {
-  data: {
-    "Active Speaker Detection"?: {
-      code: number;
-      description: string;
-      result: number;
-      score: number;
-      error?: string;
-    };
-    "Face Liveness Detection"?: {
-      code: number;
-      description: string;
-      result: boolean;
-      score: number;
-      error?: string;
-    };
-    "Face Recognition"?: {
-      code: number;
-      description: string;
-      score: number;
-      error?: string;
-    };
-    "Visual Speech Recognition"?: {
-      code: number;
-      description: string;
-      result: string;
-      score: number;
-      error?: string;
-    };
-    "Voice Recognition"?: {
-      status: string;
-      id: string;
-      score: number;
-      imposter_prob: number;
-      log_odds: string;
-      error?: string;
-    };
-  };
-  scoring_result: "pass" | "fail" | "refer";
-  score?: number;
-  decision_reasons?: string[];
-  message: string;
+// API v2 verification payloads. The v1 `process-video` endpoint was split into
+// three v2 endpoints (`/liveness`, `/face-verify`, `/voice-verify`); each returns
+// only the raw results of the services enabled for the API key.
+
+type ServiceResult = Record<string, any>;
+
+/** Services that can be excluded from the `/liveness` pipeline. */
+export type VerificationService =
+  | 'face_liveness_detection'
+  | 'active_speaker_detection'
+  | 'visual_speech_recognition'
+  | 'face_recognition'
+  | 'voice_recognition';
+
+/** `data` returned by POST /v2/liveness. */
+export interface LivenessData {
+  face_liveness_detection?: ServiceResult;
+  active_speaker_detection?: ServiceResult;
+  visual_speech_recognition?: ServiceResult;
+  [key: string]: any;
+}
+
+/** `data` returned by POST /v2/face-verify. */
+export interface FaceVerifyData {
+  face_recognition?: ServiceResult;
+  [key: string]: any;
+}
+
+/** `data` returned by POST /v2/voice-verify. */
+export interface VoiceVerifyData {
+  voice_recognition?: ServiceResult;
+  [key: string]: any;
 }

@@ -1,14 +1,71 @@
-import { ApiResponse } from "../types/internal";
-import { DocAuthResponse } from "../types/biometry/doc-auth";
+import { ApiResponse, ResponseMeta, SuccessEnvelope } from "../types/internal";
+import { DocAuthInfo } from "../types/biometry/doc-auth";
 import { ConsentResponse } from "../types/biometry/consent";
-import { FaceEnrollmentResponse, VoiceEnrollmentResponse } from "../types/biometry/enrollment";
-import { FaceMatchResponse } from "../types/biometry/face-match";
-import { ProcessVideoResponse } from "../types/biometry/process-video";
-import { SessionResponse } from "../types/biometry/session";
+import { EnrollmentData } from "../types/biometry/enrollment";
+import { FaceMatchData } from "../types/biometry/face-match";
+import {
+  FaceVerifyData,
+  LivenessData,
+  VerificationService,
+  VoiceVerifyData,
+} from "../types/biometry/process-video";
+import { SessionStartData } from "../types/biometry/session";
+
+/**
+ * Error thrown when the Biometry API returns a non-2xx response. Exposes the
+ * HTTP status, the API v2 error `code`, and the response `meta` (including
+ * `request_id`) when available.
+ */
+export class BiometryApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly meta?: ResponseMeta;
+
+  constructor(status: number, code: string | undefined, message: string, meta?: ResponseMeta) {
+    super(`Error ${status}${code ? ` [${code}]` : ''}: ${message}`);
+    this.name = 'BiometryApiError';
+    this.status = status;
+    this.code = code;
+    this.meta = meta;
+  }
+}
+
+/**
+ * Fields of the API v2 multipart `request` part. Serialized to JSON and attached
+ * as the `request` form field; the gateway decodes it and derives the internal
+ * identity/session/service headers from it.
+ */
+interface V2RequestPart {
+  user_id?: string;
+  session_id?: string;
+  phrase?: string;
+  vocabulary?: string;
+  trigger?: string;
+  use_session_video?: boolean;
+  provider?: 'inhouse' | 'idscan';
+  mrz_provider?: 'inhouse' | 'idscan';
+  is_document?: boolean;
+  services?: { include?: string[]; exclude?: string[] };
+}
+
+function isEmpty(value: unknown): boolean {
+  return value === undefined || value === null || value === '';
+}
+
+/** Drops undefined/null/empty-string entries so the JSON `request` part stays lean. */
+function compactRequest(request: V2RequestPart): V2RequestPart {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(request)) {
+    if (!isEmpty(value)) out[key] = value;
+  }
+  return out as V2RequestPart;
+}
 
 export class BiometrySDK {
   private apiKey: string;
-  private static readonly BASE_URL: string = 'https://api.biometrysolutions.com'; //'https://dev-console.biometrysolutions.com';
+  private static readonly BASE_URL: string = 'https://api.biometrysolutions.com';
+  /** API v2 gateway prefix. */
+  private static readonly GATEWAY_V2: string = '/api-gateway/v2';
 
   constructor(apiKey: string) {
     if (!apiKey) {
@@ -37,13 +94,10 @@ export class BiometrySDK {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData?.error || errorData?.message || 'Unknown error occurred';
-
-      throw new Error(`Error ${response.status}: ${errorMessage}`);
+      throw await BiometrySDK.toApiError(response);
     }
 
-    // 🔹 Extract ALL response headers
+    // Extract ALL response headers.
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       responseHeaders[key] = value;
@@ -58,17 +112,62 @@ export class BiometrySDK {
   }
 
   /**
-   * Starts a new Session for a user.
+   * Parses an error response into a {@link BiometryApiError}. Handles both the
+   * API v2 error envelope (`{ error: { code, message }, meta }`) and the legacy
+   * consent-service shape (`{ error: "message" }`).
+   */
+  private static async toApiError(response: Response): Promise<BiometryApiError> {
+    const errBody = await response.json().catch(() => ({} as any));
+
+    let code: string | undefined;
+    let message: string | undefined;
+
+    const error = errBody?.error;
+    if (typeof error === 'string') {
+      message = error;
+    } else if (error && typeof error === 'object') {
+      // The backend is trusted to send a string code, but a nested object or
+      // number would otherwise reach BiometryApiError.code untyped and render
+      // as "[object Object]" inside the message.
+      code = typeof error.code === 'string' ? error.code : undefined;
+      message = typeof error.message === 'string'
+        ? error.message
+        : error.message != null ? JSON.stringify(error.message) : undefined;
+    }
+
+    if (!message) message = typeof errBody?.message === 'string' ? errBody.message : undefined;
+    if (!message) message = 'Unknown error occurred';
+
+    return new BiometryApiError(response.status, code, message, errBody?.meta);
+  }
+
+  /**
+   * Builds a multipart body with the JSON `request` part plus binary file parts.
+   *
+   * @param request - Fields for the JSON `request` part (empty values are dropped).
+   * @param files - Named file parts; entries with an undefined file are skipped.
+   */
+  private static buildMultipart(request: V2RequestPart, files: Record<string, File | undefined>): FormData {
+    const formData = new FormData();
+    formData.append('request', JSON.stringify(compactRequest(request)));
+    for (const [name, file] of Object.entries(files)) {
+      if (file) formData.append(name, file);
+    }
+    return formData;
+  }
+
+  /**
+   * Starts a new Session.
    *
    * @param {Object} [props] - Optional properties.
    * @param {boolean} [props.warmup] - If true, triggers ML services warmup in the background.
-   * @returns {Promise<ApiResponse<SessionResponse>>} A promise resolving to the session ID.
-   * @throws {Error} - If the request fails.
+   * @returns {Promise<ApiResponse<SuccessEnvelope<SessionStartData>>>} A promise resolving to the session envelope.
+   * @throws {BiometryApiError} - If the request fails.
    */
-  async startSession(props?: { warmup?: boolean }): Promise<ApiResponse<SessionResponse>> {
+  async startSession(props?: { warmup?: boolean }): Promise<ApiResponse<SuccessEnvelope<SessionStartData>>> {
     const query = props?.warmup ? '?warmup=true' : '';
-    return await this.request<SessionResponse>(
-      `/api-gateway/sessions/start${query}`,
+    return await this.request<SuccessEnvelope<SessionStartData>>(
+      `${BiometrySDK.GATEWAY_V2}/sessions${query}`,
       'POST'
     );
   }
@@ -79,19 +178,16 @@ export class BiometrySDK {
    * @param {string} sessionId - The ID of the session to end.
    * @param {Object} [props] - Optional properties.
    * @param {string} [props.phoneNumber] - Phone number for SIM-swap fraud check via CAMARA API.
-   * @returns {Promise<ApiResponse<{ message: string }>>} A promise resolving to the result message.
-   * @throws {Error} - If the request fails.
+   * @returns {Promise<ApiResponse<SuccessEnvelope>>} A promise resolving to the result envelope.
+   * @throws {BiometryApiError} - If the request fails.
    */
-  async endSession(sessionId: string, props?: { phoneNumber?: string }): Promise<ApiResponse<{ message: string }>> {
+  async endSession(sessionId: string, props?: { phoneNumber?: string }): Promise<ApiResponse<SuccessEnvelope>> {
     if (!sessionId) throw new Error('Session ID is required.');
 
-    const body: Record<string, string> = {};
-    if (props?.phoneNumber) {
-      body['phone_number'] = props.phoneNumber;
-    }
+    const body = props?.phoneNumber ? { phone_number: props.phoneNumber } : undefined;
 
-    return await this.request<{ message: string }>(
-      `/api-gateway/sessions/end/${sessionId}`,
+    return await this.request<SuccessEnvelope>(
+      `${BiometrySDK.GATEWAY_V2}/sessions/${encodeURIComponent(sessionId)}/end`,
       'POST',
       body
     );
@@ -100,13 +196,15 @@ export class BiometrySDK {
   /**
    * Submits Authorization consent for a user.
    * Authorization Consent is required to use the services like Face and Voice recognition.
-   * 
+   *
+   * Note: consent is served by the dedicated consent service (`/api-consent`), not
+   * the API gateway, so this call is unaffected by the gateway v2 migration.
+   *
    * @param {boolean} isConsentGiven - Indicates whether the user has given consent.
    * @param {string} userFullName - The full name of the user giving consent.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
+   * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
    * @throws {Error} - If the user's full name is not provided or if the request fails.
    */
@@ -148,13 +246,15 @@ export class BiometrySDK {
   /**
    * Submits Storage consent for a user.
    * Storage consent is granted by users, allowing us to store their biometric data for future verification.
-   * 
+   *
+   * Note: consent is served by the dedicated consent service (`/api-consent`), not
+   * the API gateway, so this call is unaffected by the gateway v2 migration.
+   *
    * @param {boolean} isStorageConsentGiven - Indicates whether the user has given storage consent.
    * @param {string} userFullName - The full name of the user giving storage consent.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
+   * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
    * @throws {Error} - If the user's full name is not provided or if the request fails.
    */
@@ -194,277 +294,274 @@ export class BiometrySDK {
   }
 
   /**
-   * Enrolls a user's voice for biometric authentication.
-   * The user identity is derived from the userFullName parameter (sent as X-User-Fullname header).
+   * Enrolls a user's voice for voice recognition.
    *
    * @param {File} audio - The audio file containing the user's voice.
-   * @param {string} userFullName - The full name of the user being enrolled.
+   * @param {string} userId - Opaque, customer-provided identity key for the user.
    * @param {string} phrase - The phrase spoken in the audio file.
    * @param {Object} [props] - Optional properties for the enrollment request.
-   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<ApiResponse<VoiceEnrollmentResponse>>} - A promise resolving to the voice enrolling response.
-   * @throws {Error} - If required parameters are missing or the request fails.
+   * @param {string} [props.vocabulary] - Vocabulary constraint for speech recognition (e.g. 'en_digits').
+   * @returns {Promise<ApiResponse<SuccessEnvelope<EnrollmentData>>>} - A promise resolving to the enrollment envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
   async enrollVoice(
     audio: File,
-    userFullName: string,
+    userId: string,
     phrase: string,
     props?: {
-      sessionId?: string,
-      deviceInfo?: object,
+      vocabulary?: string,
     }
-  ): Promise<ApiResponse<VoiceEnrollmentResponse>> {
-    if (!userFullName) throw new Error('User fullname is required.');
+  ): Promise<ApiResponse<SuccessEnvelope<EnrollmentData>>> {
+    if (!userId) throw new Error('User ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
     if (!audio) throw new Error('Audio file is required.');
 
-    const formData = new FormData();
-    formData.append('phrase', phrase);
-    formData.append('voice', audio);
+    const formData = BiometrySDK.buildMultipart(
+      { user_id: userId, phrase, vocabulary: props?.vocabulary },
+      { voice: audio }
+    );
 
-    const headers: Record<string, string> = {
-      'X-User-Fullname': userFullName,
-    };
-
-    if (props?.sessionId) {
-      headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
-    return await this.request<VoiceEnrollmentResponse>(
-      '/api-gateway/enroll/voice',
+    return await this.request<SuccessEnvelope<EnrollmentData>>(
+      `${BiometrySDK.GATEWAY_V2}/enrollments/voice`,
       'POST',
-      formData,
-      headers
+      formData
     );
   }
 
   /**
-   * Enrolls a user's face for biometric authentication.
-   * 
-   * @param {File} face - Image file that contains user's face.
-   * @param {string} userFullName - The full name of the user being enrolled.
-   * @param {string} isDocument - Indicates whether the image is a document.
+   * Enrolls a user's face for face recognition.
+   *
+   * @param {File} face - Image file that contains the user's face.
+   * @param {string} userId - Opaque, customer-provided identity key for the user.
    * @param {Object} [props] - Optional properties for the enrollment request.
-   * @param {string} [props.sessionId] - Session ID to link this enrollment with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   *                                      This can include properties like operating system, browser, etc.
-   * @returns {Promise<ApiResponse<FaceEnrollmentResponse>>} - A promise resolving to the voice enrolling response.
-   * @throws {Error} - If required parameters are missing or the request fails.
+   * @param {boolean} [props.isDocument] - Indicates whether the image is a document photo.
+   * @returns {Promise<ApiResponse<SuccessEnvelope<EnrollmentData>>>} - A promise resolving to the enrollment envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
-  async enrollFace(face: File, userFullName: string, isDocument?: boolean, props?: {
-    sessionId?: string,
-    deviceInfo?: object,
-  }):
-    Promise<ApiResponse<FaceEnrollmentResponse>> {
-    if (!userFullName) throw new Error('User fullname is required.');
+  async enrollFace(
+    face: File,
+    userId: string,
+    props?: {
+      isDocument?: boolean,
+    }
+  ): Promise<ApiResponse<SuccessEnvelope<EnrollmentData>>> {
+    if (!userId) throw new Error('User ID is required.');
     if (!face) throw new Error('Face image is required.');
 
-    const formData = new FormData();
-    formData.append('face', face);
-    if (isDocument) {
-      formData.append('is_document', 'true');
-    }
+    const formData = BiometrySDK.buildMultipart(
+      { user_id: userId, is_document: props?.isDocument },
+      { face }
+    );
 
-    const headers: Record<string, string> = {
-      'X-User-Fullname': userFullName,
-    };
-
-    if (props?.sessionId) {
-      headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
-    return await this.request<FaceEnrollmentResponse>(
-      '/api-gateway/enroll/face',
+    return await this.request<SuccessEnvelope<EnrollmentData>>(
+      `${BiometrySDK.GATEWAY_V2}/enrollments/face`,
       'POST',
-      formData,
-      headers
+      formData
     );
   }
 
   /**
-   * Check the validity of a document.
+   * Checks the authenticity of an identity document.
    *
    * @param {File} document - Document image file (jpg/jpeg/png).
-   * @param {string} userFullName - The full name of the user being checked.
    * @param {Object} [props] - Optional properties for the request.
    * @param {string} [props.sessionId] - Session ID to link this check with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   * @param {boolean} [props.inHouseCheck] - If false, uses external IDScan flow. Defaults to true (in-house GPT+ML flow).
-   * @param {boolean} [props.mrzValidation] - If true, enables MRZ validation in the in-house flow.
-   * @returns {Promise<ApiResponse<DocAuthResponse>>} - A promise resolving to the document authentication response.
+   * @param {'inhouse'|'idscan'} [props.provider] - Document authenticity provider; defaults to the project config.
+   * @param {'inhouse'|'idscan'} [props.mrzProvider] - MRZ extraction provider; defaults to the project config.
+   * @returns {Promise<ApiResponse<SuccessEnvelope<DocAuthInfo>>>} - A promise resolving to the document auth envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
   async checkDocAuth(
     document: File,
-    userFullName: string,
     props?: {
       sessionId?: string,
-      deviceInfo?: object,
-      inHouseCheck?: boolean,
-      mrzValidation?: boolean,
+      provider?: 'inhouse' | 'idscan',
+      mrzProvider?: 'inhouse' | 'idscan',
     }
-  ): Promise<ApiResponse<DocAuthResponse>> {
+  ): Promise<ApiResponse<SuccessEnvelope<DocAuthInfo>>> {
     if (!document) throw new Error('Document image is required.');
-    if (!userFullName) throw new Error('User fullname is required.');
 
-    const formData = new FormData();
-    formData.append('document', document);
+    const formData = BiometrySDK.buildMultipart(
+      {
+        session_id: props?.sessionId,
+        provider: props?.provider,
+        mrz_provider: props?.mrzProvider,
+      },
+      { document }
+    );
 
-    const headers: Record<string, string> = {
-      'X-User-Fullname': userFullName,
-    };
-
-    if (props?.sessionId) {
-      headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
-    if (props?.inHouseCheck === false) {
-      headers['X-Inhouse-Docauth'] = "false";
-    }
-
-    if (props?.mrzValidation) {
-      headers['X-Inhouse-MRZ'] = "true";
-    }
-
-    return await this.request<DocAuthResponse>(
-      '/api-gateway/docauth/check',
+    return await this.request<SuccessEnvelope<DocAuthInfo>>(
+      `${BiometrySDK.GATEWAY_V2}/documents/check`,
       'POST',
-      formData,
-      headers
+      formData
     );
   }
 
   /**
-   * Matches a user's face from video against a reference image.
+   * Matches a user's live image/video against a client-provided reference image.
    *
-   * @param {File} image - Reference image file that contains user's face.
-   * @param {File} [video] - Video file that contains user's face. Required unless usePrefilledVideo is true.
-   * @param {string} [userFullName] - Full name of the end-user (used for session validation).
-   * @param {boolean} [usePrefilledVideo] - If true, reuses the video captured in the process-video step of the
-   *                                        same session. Requires props.sessionId.
+   * @param {File} referenceImage - Reference portrait image to match against.
+   * @param {string} userId - Opaque, customer-provided identity key for the user.
    * @param {Object} [props] - Optional properties for the request.
-   * @param {string} [props.sessionId] - Session ID. Required when usePrefilledVideo is true.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   * @returns {Promise<ApiResponse<FaceMatchResponse>>} - A promise resolving to the face match response.
-   * @throws {Error} - If required parameters are missing or the request fails.
+   * @param {File} [props.video] - Captured live video/image. Required unless useSessionVideo is true.
+   * @param {boolean} [props.useSessionVideo] - If true, reuses the video captured earlier in the same session.
+   *                                            Requires props.sessionId.
+   * @param {string} [props.sessionId] - Session ID. Required when useSessionVideo is true.
+   * @returns {Promise<ApiResponse<SuccessEnvelope<FaceMatchData>>>} - A promise resolving to the face match envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
   async matchFaces(
-    image: File,
-    video?: File,
-    userFullName?: string,
-    usePrefilledVideo?: boolean,
+    referenceImage: File,
+    userId: string,
     props?: {
+      video?: File,
+      useSessionVideo?: boolean,
       sessionId?: string,
-      deviceInfo?: object,
     }
-  ): Promise<ApiResponse<FaceMatchResponse>> {
-    if (!image) throw new Error('Face image is required.');
-    if ((!usePrefilledVideo) && !video) throw new Error('Video is required.');
-    if (usePrefilledVideo && !props?.sessionId) throw new Error('Session ID is required to use a video from the process-video endpoint.');
+  ): Promise<ApiResponse<SuccessEnvelope<FaceMatchData>>> {
+    if (!referenceImage) throw new Error('Reference image is required.');
+    if (!userId) throw new Error('User ID is required.');
+    if (!props?.useSessionVideo && !props?.video) throw new Error('Video is required.');
+    if (props?.useSessionVideo && !props?.sessionId) throw new Error('Session ID is required to reuse the session video.');
 
-    const formData = new FormData();
-    if (video) {
-      formData.append('video', video);
-    }
-    formData.append('image', image);
+    const formData = BiometrySDK.buildMultipart(
+      {
+        user_id: userId,
+        session_id: props?.sessionId,
+        use_session_video: props?.useSessionVideo,
+      },
+      { reference_image: referenceImage, video: props?.video }
+    );
 
-    const headers: Record<string, string> = {};
-
-    if (userFullName) {
-      headers['X-User-Fullname'] = userFullName;
-    }
-
-    if (usePrefilledVideo) {
-      headers['X-Use-Prefilled-Video'] = 'true';
-    }
-
-    if (props?.sessionId) {
-      headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
-    return await this.request<FaceMatchResponse>(
-      '/api-gateway/match-faces',
+    return await this.request<SuccessEnvelope<FaceMatchData>>(
+      `${BiometrySDK.GATEWAY_V2}/face-match`,
       'POST',
-      formData,
-      headers
+      formData
     );
   }
 
   /**
-   * Process the video through Biometry services to check liveness and authorize user.
+   * Checks liveness (face liveness, active speaker detection, visual speech recognition)
+   * on a captured video. Replaces part of the v1 `processVideo` flow.
    *
-   * @param {File} video - Video file that you want to process.
-   * @param {string} phrase - Set of numbers that user needs to say out loud in the video.
-   * @param {string} [userFullName] - Full name of the end-user. Required for Voice and Face recognition services.
+   * @param {File} video - Video file to analyse.
+   * @param {string} userId - Opaque, customer-provided identity key for the user.
+   * @param {string} phrase - Set of numbers/words the user speaks in the video.
    * @param {Object} [props] - Optional properties for the request.
-   * @param {string} [props.sessionId] - Session ID to link this request with a specific session group.
-   * @param {object} [props.deviceInfo] - Device information object containing details about the user's device.
-   * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits'). Defaults to en_digits on the server.
-   * @param {string} [props.trigger] - Action trigger that initiated this request (e.g. 'authentication', 'registration', 'confirmation').
-   * @returns {Promise<ApiResponse<ProcessVideoResponse>>} - A promise resolving to the process video response.
+   * @param {string} [props.sessionId] - Session ID for combined scoring.
+   * @param {string} [props.trigger] - Contextual trigger event name (e.g. 'authentication').
+   * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits').
+   * @param {VerificationService[]} [props.excludeServices] - Services to skip from the pipeline.
+   * @returns {Promise<ApiResponse<SuccessEnvelope<LivenessData>>>} - A promise resolving to the liveness envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
-  async processVideo(
+  async liveness(
     video: File,
+    userId: string,
     phrase: string,
-    userFullName?: string,
     props?: {
       sessionId?: string,
-      deviceInfo?: object,
-      vocabulary?: string,
       trigger?: string,
+      vocabulary?: string,
+      excludeServices?: VerificationService[],
     }
-  ): Promise<ApiResponse<ProcessVideoResponse>> {
+  ): Promise<ApiResponse<SuccessEnvelope<LivenessData>>> {
     if (!video) throw new Error('Video is required.');
+    if (!userId) throw new Error('User ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
 
-    const formData = new FormData();
-    formData.append('phrase', phrase);
-    formData.append('video', video);
+    const formData = BiometrySDK.buildMultipart(
+      {
+        user_id: userId,
+        phrase,
+        session_id: props?.sessionId,
+        trigger: props?.trigger,
+        vocabulary: props?.vocabulary,
+        services: props?.excludeServices?.length ? { exclude: props.excludeServices } : undefined,
+      },
+      { video }
+    );
 
-    if (props?.vocabulary) {
-      formData.append('vocabulary', props.vocabulary);
-    }
-
-    if (props?.trigger) {
-      formData.append('trigger', props.trigger);
-    }
-
-    const headers: Record<string, string> = {};
-
-    if (userFullName) {
-      headers['X-User-Fullname'] = userFullName;
-    }
-
-    if (props?.sessionId) {
-      headers['X-Session-ID'] = props.sessionId;
-    }
-
-    if (props?.deviceInfo) {
-      headers['X-Device-Info'] = JSON.stringify(props.deviceInfo);
-    }
-
-    return await this.request<ProcessVideoResponse>(
-      '/api-gateway/process-video',
+    return await this.request<SuccessEnvelope<LivenessData>>(
+      `${BiometrySDK.GATEWAY_V2}/liveness`,
       'POST',
-      formData,
-      headers
+      formData
+    );
+  }
+
+  /**
+   * Verifies a user's face from a video/image against their enrolled face template.
+   * Replaces part of the v1 `processVideo` flow.
+   *
+   * @param {File} video - Portrait video/image of the user.
+   * @param {string} userId - Opaque, customer-provided identity key for the user.
+   * @param {string} phrase - Set of numbers/words the user speaks in the video.
+   * @param {Object} [props] - Optional properties for the request.
+   * @param {string} [props.sessionId] - Session ID for combined scoring.
+   * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits').
+   * @returns {Promise<ApiResponse<SuccessEnvelope<FaceVerifyData>>>} - A promise resolving to the face verify envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
+   */
+  async faceVerify(
+    video: File,
+    userId: string,
+    phrase: string,
+    props?: {
+      sessionId?: string,
+      vocabulary?: string,
+    }
+  ): Promise<ApiResponse<SuccessEnvelope<FaceVerifyData>>> {
+    if (!video) throw new Error('Video is required.');
+    if (!userId) throw new Error('User ID is required.');
+    if (!phrase) throw new Error('Phrase is required.');
+
+    const formData = BiometrySDK.buildMultipart(
+      { user_id: userId, phrase, session_id: props?.sessionId, vocabulary: props?.vocabulary },
+      { video }
+    );
+
+    return await this.request<SuccessEnvelope<FaceVerifyData>>(
+      `${BiometrySDK.GATEWAY_V2}/face-verify`,
+      'POST',
+      formData
+    );
+  }
+
+  /**
+   * Verifies a user's voice from an audio/video file against their enrolled voice template.
+   * Replaces part of the v1 `processVideo` flow.
+   *
+   * @param {File} voice - Audio/video file containing the user's speech.
+   * @param {string} userId - Opaque, customer-provided identity key for the user.
+   * @param {string} phrase - Set of numbers/words the user speaks.
+   * @param {Object} [props] - Optional properties for the request.
+   * @param {string} [props.sessionId] - Session ID for combined scoring.
+   * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits').
+   * @returns {Promise<ApiResponse<SuccessEnvelope<VoiceVerifyData>>>} - A promise resolving to the voice verify envelope.
+   * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
+   */
+  async voiceVerify(
+    voice: File,
+    userId: string,
+    phrase: string,
+    props?: {
+      sessionId?: string,
+      vocabulary?: string,
+    }
+  ): Promise<ApiResponse<SuccessEnvelope<VoiceVerifyData>>> {
+    if (!voice) throw new Error('Voice file is required.');
+    if (!userId) throw new Error('User ID is required.');
+    if (!phrase) throw new Error('Phrase is required.');
+
+    const formData = BiometrySDK.buildMultipart(
+      { user_id: userId, phrase, session_id: props?.sessionId, vocabulary: props?.vocabulary },
+      { voice }
+    );
+
+    return await this.request<SuccessEnvelope<VoiceVerifyData>>(
+      `${BiometrySDK.GATEWAY_V2}/voice-verify`,
+      'POST',
+      formData
     );
   }
 }

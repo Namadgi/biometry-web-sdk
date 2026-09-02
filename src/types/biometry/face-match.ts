@@ -1,20 +1,6 @@
-export interface FaceMatchResponse {
-  data: FaceMatchData;
-  scoring_result: Record<string, any>;
-  decision_reasons: string[];
-  message: string;
-}
-
+// API v2 face-match payload (`data` in the success envelope).
+// Raw per-service results; only services enabled for the API key appear.
 export interface FaceMatchData {
-  code: number;
-  result: number;
-  description: string;
-  anchor: {
-    code: number;
-    description: string;
-  };
-  target: {
-    code: number;
-    description: string;
-  };
+  face_recognition?: Record<string, any>;
+  [key: string]: any;
 }
