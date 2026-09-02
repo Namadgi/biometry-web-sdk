@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Example apps are installed from their manifests; a committed lockfile here
+# only ages into advisory noise against demo code that is never deployed.
+yarn.lock
+package-lock.json
+*.tsbuildinfo

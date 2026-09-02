@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
-import { BiometrySDK } from 'biometry-sdk/sdk';
+import { BiometrySDK, BiometryApiError } from 'biometry-sdk/sdk';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,30 +21,47 @@ if (!API_KEY) {
 
 const sdk = new BiometrySDK(API_KEY);
 
+/**
+ * Forwards the gateway's own status and error code to the browser instead of
+ * flattening everything into a 500. Anything that is not a BiometryApiError is
+ * a bug on this side, so it stays a 500.
+ */
+const sendError = (res, error, context) => {
+  console.error(`Error ${context}:`, error);
+  if (error instanceof BiometryApiError) {
+    return res.status(error.status).json({ error: error.message, code: error.code });
+  }
+  return res.status(500).json({ error: 'Internal server error' });
+};
+
+const toFile = (uploaded) =>
+  new File([uploaded.buffer], uploaded.originalname, { type: uploaded.mimetype });
+
+app.post('/start-session', async (req, res) => {
+  try {
+    const response = await sdk.startSession();
+    res.json({ sessionId: response.body.data?.session_id });
+  } catch (error) {
+    sendError(res, error, 'starting session');
+  }
+});
+
 app.post('/submit-video', upload.single('video'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Missing video file' });
     }
 
-    const { phrase, userFullname } = req.body;
-
+    // v2 identifies the user by an opaque id you choose, sent in the JSON
+    // `request` part. v1 sent a full name in the X-User-Fullname header.
+    const { phrase, userId } = req.body;
     const sessionId = req.headers['x-session-id'];
-    const deviceInfoHeader = req.headers['x-device-info'];
 
-    const deviceInfo = deviceInfoHeader ? JSON.parse(deviceInfoHeader) : undefined;
+    const response = await sdk.liveness(toFile(req.file), userId, phrase, { sessionId });
 
-    const file = new File([req.file.buffer], req.file.originalname, { type: req.file.mimetype });
-
-    const response = await sdk.processVideo(file, phrase, userFullname, {
-      sessionId,
-      deviceInfo,
-    });
-
-    res.json(response);
+    res.json(response.body);
   } catch (error) {
-    console.error('Error processing video:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, error, 'processing video');
   }
 });
 
@@ -54,23 +71,17 @@ app.post('/submit-document', upload.single('document'), async (req, res) => {
       return res.status(400).json({ error: 'Missing document file' });
     }
 
-    const { userFullname } = req.body;
+    const { provider } = req.body;
     const sessionId = req.headers['x-session-id'];
-    const deviceInfoHeader = req.headers['x-device-info'];
-    const deviceInfo = deviceInfoHeader ? JSON.parse(deviceInfoHeader) : undefined;
 
-    const file = new File([req.file.buffer], req.file.originalname, { type: req.file.mimetype });
-
-    // Use the SDK's document check method
-    const response = await sdk.checkDocAuth(file, userFullname, {
+    const response = await sdk.checkDocAuth(toFile(req.file), {
       sessionId,
-      deviceInfo,
+      provider: provider || undefined,
     });
 
-    res.json(response);
+    res.json(response.body);
   } catch (error) {
-    console.error('Error processing ID document:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    sendError(res, error, 'processing ID document');
   }
 });
 

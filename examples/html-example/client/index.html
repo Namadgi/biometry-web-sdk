@@ -4,27 +4,71 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Process Video Component Example</title>
+  <title>Biometry SDK — plain HTML example</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 20px; }
+    section { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    label { display: block; margin-bottom: 10px; }
+    input, select { padding: 8px; margin-top: 5px; }
+    button { padding: 8px 16px; cursor: pointer; }
+    pre { background: #f6f6f6; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+  </style>
 </head>
 
 <body>
+  <h1>Biometry SDK — plain HTML example</h1>
+  <p>
+    The API key never reaches the browser. This page posts files to the local example server
+    (<code>../server</code>), and the server calls the SDK. Start it with <code>npm start</code> on port 3001.
+  </p>
+
+  <section>
+    <h2>Session</h2>
+    <p>Optional. A session groups checks so the backend can score them together.</p>
+    <button id="start-session">Start session</button>
+    <p>Session ID: <code id="session-id">none</code></p>
+  </section>
+
+  <section>
+    <h2>Liveness</h2>
+    <form id="video-form">
+      <label>
+        User ID
+        <input type="text" name="userId" placeholder="e.g. customer-42" required>
+      </label>
+      <label>
+        Phrase (transcribed digits)
+        <input type="text" name="phrase" required>
+      </label>
+      <label>
+        Video
+        <input type="file" name="video" accept="video/*" required>
+      </label>
+      <button type="submit">Submit video</button>
+    </form>
+    <pre id="video-result"></pre>
+  </section>
+
+  <section>
+    <h2>Document authenticity</h2>
+    <form id="document-form">
+      <label>
+        Provider
+        <select name="provider">
+          <option value="inhouse">inhouse</option>
+          <option value="idscan">idscan</option>
+        </select>
+      </label>
+      <label>
+        Document
+        <input type="file" name="document" accept="image/*" required>
+      </label>
+      <button type="submit">Check document</button>
+    </form>
+    <pre id="document-result"></pre>
+  </section>
+
   <script type="module" src="./index.js"></script>
-      <!-- UI components have been removed from the SDK -->
-
-  <!-- <h2>Process Video Example</h2>
-  <process-video endpoint="http://localhost:3001/submit-video" user-fullname="John Doe">
-    <video slot="video" muted playsinline style="border-radius: 1rem;"></video>
-    <button slot="record-button">Custom Record</button>
-    <button slot="stop-button">Custom Stop</button>
-    <button slot="submit-button">Custom Submit</button>
-
-    <div slot="loading">Processing...</div>
-    <div slot="error">An error occurred. Please try again.</div>
-    <div slot="success">Video submitted successfully!</div>
-  </process-video> -->
-
-  <h2>ID Document Scan Example</h2>
-  <doc-auth endpoint="http://localhost:3001/submit-document" user-fullname="John Doe"></doc-auth>
 </body>
 
 </html>
