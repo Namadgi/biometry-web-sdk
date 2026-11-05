@@ -445,10 +445,38 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
   });
 
   it('replaces SDK headers case-insensitively instead of sending both', async () => {
-    const sdk = new BiometrySDK({ apiKey: 'k1', headers: { authorization: 'Bearer other', 'content-type': 'text/plain' } });
+    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY, headers: { authorization: 'Bearer other', 'content-type': 'text/plain' } });
     mockOk({ meta: {} });
     await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
     expect(lastInit().headers).toEqual({ authorization: 'Bearer other', 'Content-Type': 'application/json' });
+  });
+
+  it('ignores headers and credentials in direct mode, with one console warning', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const headerFn = jest.fn(() => ({ Authorization: 'Bearer app-jwt' }));
+    const sdk = new BiometrySDK({ apiKey: 'k1', headers: headerFn, credentials: 'include' });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/only apply with `baseUrl`/);
+
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(fetch).toHaveBeenLastCalledWith(`${V2}/sessions`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer k1' },
+      body: undefined,
+    });
+    expect(headerFn).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not warn in direct mode without headers or credentials, or in proxy mode', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    new BiometrySDK('k1');
+    new BiometrySDK({ apiKey: 'k1' });
+    new BiometrySDK({ baseUrl: PROXY, headers: { 'X-A': '1' }, credentials: 'include' });
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('sends the apiKey to baseUrl when both are set', async () => {

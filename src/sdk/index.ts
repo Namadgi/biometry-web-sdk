@@ -119,12 +119,14 @@ export interface BiometrySDKOptions {
    * Extra headers sent on every request, for example your app's own session
    * token for the proxy. Applied after the `Authorization` header from
    * `apiKey`, so a header with the same name here (compared
-   * case-insensitively) replaces it.
+   * case-insensitively) replaces it. Only used with `baseUrl`; without it they
+   * are ignored with a console warning.
    */
   headers?: BiometryHeaders;
   /**
    * Passed to `fetch` as `credentials`. Set to `'include'` when the proxy is on
-   * another origin and authenticates with cookies. Not set by default.
+   * another origin and authenticates with cookies. Not set by default. Only
+   * used with `baseUrl`; without it, it is ignored with a console warning.
    */
   credentials?: RequestCredentials;
 }
@@ -162,8 +164,14 @@ export class BiometrySDK {
     this.baseUrl = options.baseUrl
       ? normalizeBaseUrl(options.baseUrl)
       : BiometrySDK.BASE_URL;
-    this.extraHeaders = options.headers;
-    this.credentials = options.credentials;
+    if (options.baseUrl) {
+      this.extraHeaders = options.headers;
+      this.credentials = options.credentials;
+    } else if (options.headers || options.credentials) {
+      // Direct mode talks to the Biometry API itself, which only needs the API
+      // key. Custom headers and credentials are meant for your own proxy.
+      console.warn('BiometrySDK: `headers` and `credentials` only apply with `baseUrl` (proxy mode); they are ignored.');
+    }
   }
 
   private async request<T>(path: string, method: string, body?: any, headers?: Record<string, string>):
