@@ -428,11 +428,12 @@ test('issuing a challenge needs sign-in and an owned session, and is rate limite
 test('onboarding consent records authorization and storage consent server-side for the signed-in user', async () => {
   const res = await postJson('/onboarding/consent', { accepted: true, user_id: 'victim' });
   assert.equal(res.status, 200);
-  assert.deepEqual(received.map((r) => r.url), ['/api-consent/consent', '/api-consent/strg-consent']);
-  for (const r of received) {
-    assert.equal(r.headers.authorization, 'Bearer project-key');
-    assert.deepEqual(JSON.parse(r.body.toString()), { is_consent_given: true, user_fullname: 'user-123' });
-  }
+  assert.deepEqual(received.map((r) => `${r.method} ${r.url}`), ['PUT /api-gateway/v2/users/user-123/consents']);
+  const [r] = received;
+  assert.equal(r.headers.authorization, 'Bearer project-key');
+  assert.deepEqual(JSON.parse(r.body.toString()), { authorization: true, storage: true });
+  // Biometry's record of the consent shows the user's client, not this server.
+  assert.ok(r.headers['x-forwarded-for']);
 });
 
 test('onboarding consent needs accepted: true, a signed-in user and a user_id of 3+ characters', async () => {
@@ -442,21 +443,31 @@ test('onboarding consent needs accepted: true, a signed-in user and a user_id of
   assert.equal(res.status, 401);
   res = await postJson('/onboarding/consent', { accepted: true }, SHORT_AUTH);
   assert.equal(res.status, 400);
-  assert.match((await res.json()).error, /at least 3 characters/);
+  assert.match((await res.json()).error, /3 to 128 characters/);
   assert.equal(received.length, 0);
-  await assert.rejects(recordConsent({ apiUrl: upstreamUrl, apiKey: 'k', userId: 'ab' }), /at least 3/);
+  await assert.rejects(recordConsent({ apiUrl: upstreamUrl, apiKey: 'k', userId: 'ab' }), /3 to 128/);
+  await assert.rejects(recordConsent({ apiUrl: upstreamUrl, apiKey: 'k', userId: 'a'.repeat(129) }), /3 to 128/);
 });
 
-test('a consent failure upstream gives 502 and storage consent is not attempted', async () => {
+test('a consent failure upstream gives 502', async () => {
   nextResponse = { status: 500, body: '{}' };
   const res = await postJson('/onboarding/consent', { accepted: true });
   assert.equal(res.status, 502);
   assert.equal(received.length, 1);
 });
 
-test('the SDK consent-service calls are not forwarded', async () => {
+test('the SDK consent calls are not forwarded', async () => {
   for (const path of ['/api-consent/consent', '/api-consent/strg-consent']) {
     const res = await postJson(path, { is_consent_given: true, user_fullname: 'victim' });
+    assert.equal(res.status, 404);
+  }
+  // giveConsent() / revokeConsent() in the SDKs: consent is recorded by the backend.
+  for (const method of ['PUT', 'GET']) {
+    const res = await fetch(`${proxyUrl}/api-gateway/v2/users/victim/consents`, {
+      method,
+      headers: { ...APP_AUTH, 'content-type': 'application/json' },
+      body: method === 'PUT' ? JSON.stringify({ authorization: true, storage: true }) : undefined,
+    });
     assert.equal(res.status, 404);
   }
   assert.equal(received.length, 0);

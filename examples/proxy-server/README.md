@@ -35,7 +35,7 @@ final biometry = await Biometry.initialize(
    `deepfake/checks`), and the consent-template calls
    `POST /api-gateway/v2/consents/{id}/approve/{user_id}` and
    `GET /api-gateway/v2/consents/my-approvals/{user_id}`. Anything else gets `404`, including
-   the SDKs' own `/api-consent/*` calls.
+   the SDKs' own consent calls (`/api-consent/*` and `/api-gateway/v2/users/{user_id}/consents`).
 3. **Never passes the client's body through.** It parses the JSON `request` part, builds a new
    one from the fields that route allows (exact key names, checked types), **sets** `user_id` to
    the signed-in user, keeps `session_id` only if this server started that session for the same
@@ -57,12 +57,17 @@ production (for example Redis `SET session:<id> <user_id> EX 3600`).
 
 ## Consent (required before enrollment)
 
-Biometry needs the user's **authorization consent** (for face and voice verification) and
-**storage consent** (for enrollment). Your backend records both, server-to-server with your API
-key, through `/api-consent/consent` and `/api-consent/strg-consent`, using your `user_id` as
-`user_fullname`. The consent service requires that value to be **at least 3 characters**, so
-your user ids must be too. The SDKs' `giveAuthorizationConsent` / `giveStorageConsent` calls are
-not forwarded, so a device can never record consent for someone else.
+Face and voice enrollment need the user's **authorization consent** (Biometry may process their
+biometric data) and **storage consent** (Biometry may store it). Your backend records both,
+server-to-server with your API key, in one call:
+
+```
+PUT /api-gateway/v2/users/{user_id}/consents   {"authorization": true, "storage": true}
+```
+
+`false` withdraws a consent, and `GET` on the same path returns both states. Your user ids must
+be **3 to 128 characters** of `A-Za-z0-9._:@-`. The SDKs' own consent calls are not forwarded,
+so a device can never record consent for someone else.
 
 This example does it in `recordConsent(userId)`, exposed as:
 
@@ -70,7 +75,9 @@ This example does it in `recordConsent(userId)`, exposed as:
 POST /onboarding/consent      {"accepted": true}      -> records both for the signed-in user
 ```
 
-It answers `400` for a user id shorter than 3 characters and `502` if Biometry refuses. Call it
+It answers `400` for a user id outside 3 to 128 characters and `502` if Biometry refuses. It
+passes the user's `user-agent` and IP on, so Biometry's record of the consent shows the user's
+client rather than this server. Call it
 from your onboarding flow once the user has agreed in your app, before the first enrollment.
 The `/v2/consents` endpoints (`approveConsent` / `getConsentApprovals` in the Flutter SDK) are a
 different feature: your own custom consent documents. They do **not** unlock enrollment or
