@@ -31,8 +31,8 @@ const MAX_BODY_BYTES = 50 * 1024 * 1024;
 /** Path parameters (session ids, consent ids, user ids) must look like ids. */
 const SAFE_ID = /^(?!\.{1,2}$)[A-Za-z0-9._:@-]{1,128}$/;
 
-/** The consent service requires `user_fullname` (your user_id) to be at least 3 characters. */
-const MIN_CONSENT_USER_ID_LENGTH = 3;
+/** Biometry consent is keyed by user_id, which must be 3 to 128 of these characters. */
+const CONSENT_USER_ID = /^[A-Za-z0-9._:@-]{3,128}$/;
 
 /** How long this proxy remembers which user started a session. */
 const SESSION_TTL_MS = 60 * 60 * 1000;
@@ -181,29 +181,30 @@ export class ChallengeStore {
 }
 
 // ---------------------------------------------------------------------------
-// Consent. Biometry needs the user's authorization consent (verification) and
-// storage consent (enrollment) before those calls. Record both from your
-// backend with your API key, keyed by the same user_id (sent as
-// `user_fullname`, which despite the name is your user id, 3+ characters).
+// Consent. Biometry needs the user's authorization and storage consent before
+// enrollment. Record both from your backend with your API key, through
+// PUT /api-gateway/v2/users/{user_id}/consents, keyed by the same user_id.
 // ---------------------------------------------------------------------------
 
 /**
  * Records authorization and storage consent for `userId`. Call it from your
  * onboarding flow after the user agreed in your app, before enrollment.
- * Returns the first failing Response, or undefined when both were recorded.
+ * Recording consent the user already gave is a no-op. `clientHeaders`
+ * (the user's `user-agent`, `x-forwarded-for`) go into Biometry's record of
+ * the consent instead of this server's.
+ * Returns the failing Response, or undefined when both were recorded.
  */
-export async function recordConsent({ apiUrl, apiKey, userId, sessionId }) {
-  if (typeof userId !== 'string' || userId.length < MIN_CONSENT_USER_ID_LENGTH) {
-    throw new Error(`user_id must be at least ${MIN_CONSENT_USER_ID_LENGTH} characters for consent`);
+export async function recordConsent({ apiUrl, apiKey, userId, clientHeaders = {} }) {
+  if (typeof userId !== 'string' || !CONSENT_USER_ID.test(userId)) {
+    throw new Error('user_id must be 3 to 128 characters of A-Za-z0-9._:@- for consent');
   }
-  const headers = { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
-  if (sessionId) headers['x-session-id'] = sessionId;
-  const body = JSON.stringify({ is_consent_given: true, user_fullname: userId });
-  for (const path of ['/api-consent/consent', '/api-consent/strg-consent']) {
-    const res = await fetch(`${apiUrl}${path}`, { method: 'POST', headers, body });
-    if (!res.ok) return res;
-  }
-  return undefined;
+  const headers = { ...clientHeaders, authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
+  const res = await fetch(`${apiUrl}/api-gateway/v2/users/${encodeURIComponent(userId)}/consents`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ authorization: true, storage: true }),
+  });
+  return res.ok ? undefined : res;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,10 +479,13 @@ export function createProxy({
     const raw = await readBody(req);
     const body = raw.length ? parseJson(raw.toString('utf8'), 'body') : {};
     if (body.accepted !== true) throw new HttpError(400, 'accepted must be true');
-    if (userId.length < MIN_CONSENT_USER_ID_LENGTH) {
-      throw new HttpError(400, `user_id must be at least ${MIN_CONSENT_USER_ID_LENGTH} characters for consent`);
+    if (!CONSENT_USER_ID.test(userId)) {
+      throw new HttpError(400, 'user_id must be 3 to 128 characters of A-Za-z0-9._:@- for consent');
     }
-    const failed = await recordConsent({ apiUrl: upstreamBase, apiKey, userId });
+    const clientHeaders = {};
+    if (req.headers['user-agent']) clientHeaders['user-agent'] = req.headers['user-agent'];
+    if (req.socket.remoteAddress) clientHeaders['x-forwarded-for'] = req.socket.remoteAddress;
+    const failed = await recordConsent({ apiUrl: upstreamBase, apiKey, userId, clientHeaders });
     if (failed) throw new HttpError(502, `consent was not recorded (Biometry answered ${failed.status})`);
     return { consent: 'recorded' };
   }
