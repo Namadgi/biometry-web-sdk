@@ -9,13 +9,15 @@ Proxy mode: the SDK can call your own backend instead of the Biometry API, so th
 - `new BiometrySDK(options)` with `apiKey`, `baseUrl`, `headers` and `credentials`. `new BiometrySDK('key')` still works and is the same as `{ apiKey: 'key' }`.
 - `baseUrl` replaces `https://api.biometrysolutions.com` and keeps every request path (`/api-gateway/v2/...`), so a backend proxy can forward requests unchanged.
 - `apiKey` is optional when `baseUrl` is set. Without an API key the SDK sends no `Authorization` header.
-- `headers` (an object, or a function called before every request) adds your own headers, for example your app's session token for the proxy. They replace SDK headers with the same name.
+- `baseUrl` must be an absolute `http` or `https` URL without a query or fragment, otherwise the constructor throws.
+- `headers` (an object, or a function called before every request) adds your own headers, for example your app's session token for the proxy. They replace SDK headers with the same name, compared case-insensitively.
+- Options with neither `apiKey` nor `baseUrl` throw `apiKey or baseUrl is required to initialize the SDK.`
 - `credentials` is passed to `fetch`, for cross-origin proxies that use cookies.
-- `examples/proxy-server`: a zero-dependency Node proxy that authenticates the caller, forwards only the SDK's paths, checks `user_id` and `session_id` ownership, and adds the API key.
+- `examples/proxy-server`: a zero-dependency Node proxy (with a `node --test` suite) that authenticates the caller, accepts only the SDK's paths, rebuilds every request from an allow list with `user_id` set to the signed-in user, refuses foreign `session_id`s, drops the query string, and adds the API key.
 
 ### Unchanged
 
-- Without `baseUrl`, requests go to the Biometry API with `Authorization: Bearer <apiKey>` exactly as in 3.0.0, and a missing API key still throws `API Key is required to initialize the SDK.`
+- Without `baseUrl`, requests go to the Biometry API with `Authorization: Bearer <apiKey>` exactly as in 3.0.0, and `new BiometrySDK('')` still throws `API Key is required to initialize the SDK.`
 
 ## 3.0.0 (BM-338)
 

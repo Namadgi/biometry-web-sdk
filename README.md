@@ -69,12 +69,15 @@ const sdk = new BiometrySDK({
 The SDK keeps the request paths and only swaps the host, so `startSession()` calls `https://your-backend.example.com/biometry/api-gateway/v2/sessions`. Without an `apiKey` it sends no `Authorization` header of its own. Your backend must:
 
 1. Authenticate your user (session cookie, JWT, or the `headers` you pass here).
-2. Check that the `user_id` in the request (in the JSON `request` part of multipart calls, or in the path) is a user that caller may act as, and that any `session_id` was started for that user.
-3. Forward only the `/api-gateway/v2/...` paths your app uses to `https://api.biometrysolutions.com` with the same path and query, adding `Authorization: Bearer <your API key>`.
+2. Accept only the `/api-gateway/v2/...` paths your app uses.
+3. Never pass the client's body through. Rebuild each request from the fields and files that call needs, **set** `user_id` to the signed-in user (do not just compare it: the gateway's JSON decoder matches keys case-insensitively, so `USER_ID` or a duplicate key can slip past a check), keep a `session_id` only if it was started for that user, and drop the query string (except `warmup=true` on session start).
+4. Send the rebuilt request to `https://api.biometrysolutions.com` with the same path, adding `Authorization: Bearer <your API key>`.
 
-[`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all three.
+[`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite.
 
-If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`.
+If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
+
+`baseUrl` must be an absolute `http` or `https` URL without a query or fragment; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively.
 
 #### Direct mode (server-side or testing)
 
@@ -85,7 +88,7 @@ const sdk = new BiometrySDK('YOUR_API_KEY');
 // same as: new BiometrySDK({ apiKey: 'YOUR_API_KEY' })
 ```
 
-The API key is sent as a Bearer token on every request. An error is thrown if there is neither an API key nor a `baseUrl`.
+The API key is sent as a Bearer token on every request. `new BiometrySDK('')` throws `API Key is required to initialize the SDK.`; options with neither `apiKey` nor `baseUrl` throw `apiKey or baseUrl is required to initialize the SDK.`
 
 > **Security:** Never put your API key in client-side code shipped to production. Use proxy mode in the browser.
 
