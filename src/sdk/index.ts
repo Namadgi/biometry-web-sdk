@@ -48,6 +48,36 @@ interface V2RequestPart {
   services?: { include?: string[]; exclude?: string[] };
 }
 
+/**
+ * Copies `source` into `target`, replacing any header of the same name
+ * regardless of case, so `authorization` overrides `Authorization` instead of
+ * both being sent (which `fetch` would join into one comma-separated value).
+ */
+function setHeaders(target: Record<string, string>, source?: Record<string, string>): void {
+  if (!source) return;
+  for (const [name, value] of Object.entries(source)) {
+    const lower = name.toLowerCase();
+    for (const existing of Object.keys(target)) {
+      if (existing.toLowerCase() === lower) delete target[existing];
+    }
+    target[name] = value;
+  }
+}
+
+/** Returns `baseUrl` without trailing slashes, or throws if it is not an absolute http(s) URL. */
+function normalizeBaseUrl(baseUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error(`baseUrl must be an absolute http or https URL, got "${baseUrl}".`);
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.search || url.hash) {
+    throw new Error(`baseUrl must be an absolute http or https URL without a query or fragment, got "${baseUrl}".`);
+  }
+  return baseUrl.replace(/\/+$/, '');
+}
+
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === '';
 }
@@ -79,7 +109,7 @@ export interface BiometrySDKOptions {
    */
   apiKey?: string;
   /**
-   * Origin (plus optional path prefix) that replaces
+   * Absolute http(s) origin (plus optional path prefix) that replaces
    * `https://api.biometrysolutions.com`. Request paths are kept as is, so
    * `baseUrl: 'https://app.example.com/biometry'` sends session starts to
    * `https://app.example.com/biometry/api-gateway/v2/sessions`.
@@ -88,7 +118,8 @@ export interface BiometrySDKOptions {
   /**
    * Extra headers sent on every request, for example your app's own session
    * token for the proxy. Applied after the `Authorization` header from
-   * `apiKey`, so a header with the same name here replaces it.
+   * `apiKey`, so a header with the same name here (compared
+   * case-insensitively) replaces it.
    */
   headers?: BiometryHeaders;
   /**
@@ -110,20 +141,26 @@ export class BiometrySDK {
   /**
    * @param apiKeyOrOptions - Your project API key (direct mode), or
    *   {@link BiometrySDKOptions} (for proxy mode, `{ baseUrl }` with no `apiKey`).
-   * @throws {Error} If neither an API key nor a `baseUrl` is given.
+   * @throws {Error} If neither an API key nor a `baseUrl` is given, or if
+   *   `baseUrl` is not an absolute http(s) URL without a query or fragment.
    */
   constructor(apiKeyOrOptions: string | BiometrySDKOptions) {
+    if (typeof apiKeyOrOptions === 'string' || apiKeyOrOptions == null) {
+      if (!apiKeyOrOptions) {
+        throw new Error('API Key is required to initialize the SDK.');
+      }
+    }
     const options: BiometrySDKOptions = typeof apiKeyOrOptions === 'string'
       ? { apiKey: apiKeyOrOptions }
-      : (apiKeyOrOptions ?? {});
+      : apiKeyOrOptions;
 
     if (!options.apiKey && !options.baseUrl) {
-      throw new Error('API Key is required to initialize the SDK.');
+      throw new Error('apiKey or baseUrl is required to initialize the SDK.');
     }
 
     this.apiKey = options.apiKey || undefined;
     this.baseUrl = options.baseUrl
-      ? options.baseUrl.replace(/\/+$/, '')
+      ? normalizeBaseUrl(options.baseUrl)
       : BiometrySDK.BASE_URL;
     this.extraHeaders = options.headers;
     this.credentials = options.credentials;
@@ -140,10 +177,12 @@ export class BiometrySDK {
       ? await this.extraHeaders()
       : this.extraHeaders;
 
-    const requestHeaders: Record<string, string> = { ...defaultHeaders, ...extra, ...headers };
+    const requestHeaders: Record<string, string> = { ...defaultHeaders };
+    setHeaders(requestHeaders, extra);
+    setHeaders(requestHeaders, headers);
 
     if (body && !(body instanceof FormData)) {
-      requestHeaders['Content-Type'] = 'application/json';
+      setHeaders(requestHeaders, { 'Content-Type': 'application/json' });
       body = JSON.stringify(body);
     }
     const init: RequestInit = {

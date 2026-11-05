@@ -352,8 +352,22 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
   }
 
   it('still requires an API key when no baseUrl is given', () => {
-    expect(() => new BiometrySDK({})).toThrow('API Key is required to initialize the SDK.');
-    expect(() => new BiometrySDK({ apiKey: '' })).toThrow('API Key is required to initialize the SDK.');
+    expect(() => new BiometrySDK({})).toThrow('apiKey or baseUrl is required to initialize the SDK.');
+    expect(() => new BiometrySDK({ apiKey: '' })).toThrow('apiKey or baseUrl is required to initialize the SDK.');
+  });
+
+  it.each(['app.example.com', '/biometry', 'ftp://app.example.com', 'https://app.example.com?x=1', 'https://app.example.com#x'])(
+    'rejects baseUrl %p that is not an absolute http(s) URL',
+    (baseUrl) => {
+      expect(() => new BiometrySDK({ baseUrl })).toThrow(/baseUrl must be an absolute http or https URL/);
+    }
+  );
+
+  it('accepts an http baseUrl for local development', async () => {
+    const sdk = new BiometrySDK({ baseUrl: 'http://localhost:3002' });
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3002/api-gateway/v2/sessions', expect.any(Object));
   });
 
   it('accepts the options form with only an apiKey and keeps direct-mode behaviour', async () => {
@@ -428,6 +442,13 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     mockOk({ data: { session_id: 's' }, meta: {} });
     await sdk.startSession();
     expect(lastInit().headers).toEqual({ Authorization: 'Bearer other' });
+  });
+
+  it('replaces SDK headers case-insensitively instead of sending both', async () => {
+    const sdk = new BiometrySDK({ apiKey: 'k1', headers: { authorization: 'Bearer other', 'content-type': 'text/plain' } });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
+    expect(lastInit().headers).toEqual({ authorization: 'Bearer other', 'Content-Type': 'application/json' });
   });
 
   it('sends the apiKey to baseUrl when both are set', async () => {
