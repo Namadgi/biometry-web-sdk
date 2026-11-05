@@ -9,12 +9,12 @@ Proxy mode: the SDK can call your own backend instead of the Biometry API, so th
 - `new BiometrySDK(options)` with `apiKey`, `baseUrl`, `headers` and `credentials`. `new BiometrySDK('key')` still works and is the same as `{ apiKey: 'key' }`.
 - `baseUrl` replaces `https://api.biometrysolutions.com` and keeps every request path (`/api-gateway/v2/...`), so a backend proxy can forward requests unchanged.
 - `apiKey` is optional when `baseUrl` is set. Without an API key the SDK sends no `Authorization` header.
-- `baseUrl` must be an absolute `http` or `https` URL without a query or fragment, otherwise the constructor throws.
+- `baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` at all, otherwise the constructor throws.
 - `headers` (an object, or a function called before every request) adds your own headers, for example your app's session token for the proxy. They replace SDK headers with the same name, compared case-insensitively.
 - Options with neither `apiKey` nor `baseUrl` throw `apiKey or baseUrl is required to initialize the SDK.`
 - `credentials` is passed to `fetch`, for cross-origin proxies that use cookies.
 - `headers` and `credentials` only apply with `baseUrl`. In direct mode they are ignored and the constructor logs one `console.warn`, so direct calls to Biometry carry only the API key.
-- `examples/proxy-server`: a zero-dependency Node proxy (with a `node --test` suite) that authenticates the caller, accepts only the SDK's paths, rebuilds every request from an allow list with `user_id` set to the signed-in user, refuses foreign `session_id`s, drops the query string, and adds the API key. It also records consent server-side (`recordConsent()`, `POST /onboarding/consent`) instead of forwarding the SDK's consent calls, and owns the liveness challenge (`POST /challenge`; the stored challenge is written into `phrase` on liveness, face-verify and voice-verify).
+- `examples/proxy-server`: a zero-dependency Node proxy (with a `node --test` suite) that authenticates the caller, accepts only the SDK's paths, rebuilds every request from an allow list with `user_id` set to the signed-in user, refuses foreign `session_id`s, drops the query string, and adds the API key. It also records consent server-side (`recordConsent()`, `POST /onboarding/consent`) instead of forwarding the SDK's consent calls, and owns the liveness challenge (`POST /challenge` for a session; the stored challenge is written into `phrase` on liveness and voice-verify, each once per session; face-verify needs none). `authenticate` is required (the demo token only runs with `ALLOW_DEMO_AUTH=1`), session ownership expires and is dropped on session end, and session starts and challenges are rate-limited per user.
 
 ### Unchanged
 

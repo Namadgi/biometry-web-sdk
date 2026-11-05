@@ -356,7 +356,7 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     expect(() => new BiometrySDK({ apiKey: '' })).toThrow('apiKey or baseUrl is required to initialize the SDK.');
   });
 
-  it.each(['app.example.com', '/biometry', 'ftp://app.example.com', 'https://app.example.com?x=1', 'https://app.example.com#x'])(
+  it.each(['app.example.com', '/biometry', 'ftp://app.example.com', 'https://app.example.com?x=1', 'https://app.example.com#x', 'https://app.example.com/?', 'https://app.example.com/#'])(
     'rejects baseUrl %p that is not an absolute http(s) URL',
     (baseUrl) => {
       expect(() => new BiometrySDK({ baseUrl })).toThrow(/baseUrl must be an absolute http or https URL/);

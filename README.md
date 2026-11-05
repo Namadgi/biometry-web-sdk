@@ -76,11 +76,12 @@ The SDK keeps the request paths and only swaps the host, so `startSession()` cal
 [`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite. It also shows the two jobs your backend must do itself in proxy mode:
 
 - **Consent.** Record the user's authorization and storage consent from your backend with your API key (`/api-consent/consent` and `/api-consent/strg-consent`, with your `user_id` as `user_fullname`), for example in your onboarding flow before the first enrollment. The proxy does not forward `giveAuthorizationConsent` / `giveStorageConsent`, so a browser can't record consent for another user.
-- **Liveness challenge.** Your backend issues the digits the user reads, keeps its own copy, and writes it into `phrase` on `liveness`, `faceVerify` and `voiceVerify`, ignoring the phrase the browser sends.
+- **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge.
+- Your user ids must be at least 3 characters: the consent service requires it.
 
 If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
 
-`baseUrl` must be an absolute `http` or `https` URL without a query or fragment; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively. `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
+`baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` in it; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively. `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
 
 #### Direct mode (server-side or testing)
 

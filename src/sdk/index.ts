@@ -72,8 +72,8 @@ function normalizeBaseUrl(baseUrl: string): string {
   } catch {
     throw new Error(`baseUrl must be an absolute http or https URL, got "${baseUrl}".`);
   }
-  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.search || url.hash) {
-    throw new Error(`baseUrl must be an absolute http or https URL without a query or fragment, got "${baseUrl}".`);
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(baseUrl)) {
+    throw new Error(`baseUrl must be an absolute http or https URL with no "?" or "#", got "${baseUrl}".`);
   }
   return baseUrl.replace(/\/+$/, '');
 }
@@ -144,7 +144,7 @@ export class BiometrySDK {
    * @param apiKeyOrOptions - Your project API key (direct mode), or
    *   {@link BiometrySDKOptions} (for proxy mode, `{ baseUrl }` with no `apiKey`).
    * @throws {Error} If neither an API key nor a `baseUrl` is given, or if
-   *   `baseUrl` is not an absolute http(s) URL without a query or fragment.
+   *   `baseUrl` is not an absolute http(s) URL with no `?` or `#`.
    */
   constructor(apiKeyOrOptions: string | BiometrySDKOptions) {
     if (typeof apiKeyOrOptions === 'string' || apiKeyOrOptions == null) {
