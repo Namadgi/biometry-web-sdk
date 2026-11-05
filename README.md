@@ -73,11 +73,14 @@ The SDK keeps the request paths and only swaps the host, so `startSession()` cal
 3. Never pass the client's body through. Rebuild each request from the fields and files that call needs, **set** `user_id` to the signed-in user (do not just compare it: the gateway's JSON decoder matches keys case-insensitively, so `USER_ID` or a duplicate key can slip past a check), keep a `session_id` only if it was started for that user, and drop the query string (except `warmup=true` on session start).
 4. Send the rebuilt request to `https://api.biometrysolutions.com` with the same path, adding `Authorization: Bearer <your API key>`.
 
-[`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite.
+[`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite. It also shows the two jobs your backend must do itself in proxy mode:
+
+- **Consent.** Record the user's authorization and storage consent from your backend with your API key (`/api-consent/consent` and `/api-consent/strg-consent`, with your `user_id` as `user_fullname`), for example in your onboarding flow before the first enrollment. The proxy does not forward `giveAuthorizationConsent` / `giveStorageConsent`, so a browser can't record consent for another user.
+- **Liveness challenge.** Your backend issues the digits the user reads, keeps its own copy, and writes it into `phrase` on `liveness`, `faceVerify` and `voiceVerify`, ignoring the phrase the browser sends.
 
 If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
 
-`baseUrl` must be an absolute `http` or `https` URL without a query or fragment; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively.
+`baseUrl` must be an absolute `http` or `https` URL without a query or fragment; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively. `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
 
 #### Direct mode (server-side or testing)
 
@@ -143,7 +146,9 @@ Pass `{ warmup: true }` to `startSession` to pre-warm the ML services in the bac
 
 ### Consent
 
-Consent must be collected **before** performing biometric operations. It is served by the consent service and still identifies the user by full name.
+Consent must be collected **before** performing biometric operations. It is served by the consent service; despite the parameter name `userFullName`, pass your `user_id`, not the person's name.
+
+> **Proxy mode:** record consent from your backend instead (see [Proxy mode](#proxy-mode-browser-recommended)); the example proxy does not forward these calls. The `/v2/consents` endpoints are a different feature (your own custom consent documents) and do not unlock enrollment.
 
 | Type | Required before | Method |
 |------|----------------|--------|
@@ -151,8 +156,8 @@ Consent must be collected **before** performing biometric operations. It is serv
 | **Storage** | Face/voice enrollment | `giveStorageConsent()` |
 
 ```typescript
-await sdk.giveAuthorizationConsent(true, 'Jane Doe');
-await sdk.giveStorageConsent(true, 'Jane Doe');
+await sdk.giveAuthorizationConsent(true, 'user-123');
+await sdk.giveStorageConsent(true, 'user-123');
 ```
 
 Both accept optional `sessionId` and `deviceInfo`.
@@ -282,8 +287,8 @@ const sessionId = session.body.data.session_id;
 const userId = 'user-123';
 
 // 1. Collect consent
-await sdk.giveStorageConsent(true, 'Jane Doe', { sessionId });
-await sdk.giveAuthorizationConsent(true, 'Jane Doe', { sessionId });
+await sdk.giveStorageConsent(true, userId, { sessionId });
+await sdk.giveAuthorizationConsent(true, userId, { sessionId });
 
 // 2. Liveness check on the live capture
 const liveVideo = new File([videoBytes], 'video.mp4', { type: 'video/mp4' });
@@ -326,8 +331,8 @@ Creates a new SDK instance. Passing a string is the same as `{ apiKey }`.
 |-----------|------|----------|-------------|
 | `apiKey` | `string` | Unless `baseUrl` is set | Your Biometry project API key, sent as `Authorization: Bearer <apiKey>`. Leave it out in proxy mode. |
 | `baseUrl` | `string` | No | Replaces `https://api.biometrysolutions.com`; request paths are kept. Point it at your backend proxy. |
-| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Extra headers sent on every request. They replace an SDK header with the same name, including `Authorization`. |
-| `credentials` | `RequestCredentials` | No | Passed to `fetch`. Use `'include'` for a cross-origin proxy that authenticates with cookies. |
+| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Proxy mode only. Extra headers sent on every request. They replace an SDK header with the same name (case-insensitively), including `Authorization`. Ignored with a warning without `baseUrl`. |
+| `credentials` | `RequestCredentials` | No | Proxy mode only. Passed to `fetch`. Use `'include'` for a cross-origin proxy that authenticates with cookies. Ignored with a warning without `baseUrl`. |
 
 ---
 

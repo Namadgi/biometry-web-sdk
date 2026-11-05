@@ -2,9 +2,10 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createProxy } from './server.mjs';
+import { createProxy, ChallengeStore, generateChallenge, CHALLENGE_LENGTH, CHALLENGE_DIGITS } from './server.mjs';
 
 const APP_AUTH = { authorization: 'Bearer demo-app-token' }; // demo user: user-123
+const OTHER_AUTH = { authorization: 'Bearer other-app-token' }; // test user: victim
 
 let upstream;
 let upstreamUrl;
@@ -14,6 +15,8 @@ let nextResponse; // what the fake Biometry API answers next
 let proxy;
 let proxyUrl;
 const sessionOwners = new Map();
+let clock = 1_000_000;
+const challenges = new ChallengeStore({ now: () => clock });
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -32,7 +35,15 @@ before(async () => {
     res.end(body);
   });
   upstreamUrl = await listen(upstream);
-  proxy = createProxy({ apiKey: 'project-key', apiUrl: upstreamUrl, sessionOwners, allowedOrigin: 'https://app.example.com' });
+  const users = { 'Bearer demo-app-token': 'user-123', 'Bearer other-app-token': 'victim' };
+  proxy = createProxy({
+    apiKey: 'project-key',
+    apiUrl: upstreamUrl,
+    authenticate: (req) => users[req.headers.authorization],
+    sessionOwners,
+    challenges,
+    allowedOrigin: 'https://app.example.com',
+  });
   proxyUrl = await listen(proxy);
 });
 
@@ -47,7 +58,16 @@ beforeEach(() => {
   sessionOwners.clear();
   sessionOwners.set('sess-mine', 'user-123');
   sessionOwners.set('sess-other', 'victim');
+  challenges.challenges.clear();
+  challenges.issued.clear();
+  clock = 1_000_000;
 });
+
+async function issueChallenge(headers = APP_AUTH) {
+  const res = await fetch(`${proxyUrl}/challenge`, { method: 'POST', headers });
+  assert.equal(res.status, 200);
+  return (await res.json()).challenge;
+}
 
 /** Parses a multipart body the fake upstream received. */
 async function upstreamForm(rec) {
@@ -80,13 +100,15 @@ test('case-variant and look-alike user_id keys never reach Biometry; user_id is 
 });
 
 test('a client-supplied user_id for someone else is replaced, not forwarded', async () => {
-  const res = await post('/api-gateway/v2/liveness', multipart({ user_id: 'victim', phrase: 'one two' }, { video: 'v' }));
+  const challenge = await issueChallenge();
+  const res = await post('/api-gateway/v2/liveness', multipart({ user_id: 'victim' }, { video: 'v' }));
   assert.equal(res.status, 200);
   const part = JSON.parse((await upstreamForm(received[0])).get('request'));
-  assert.deepEqual(part, { phrase: 'one two', user_id: 'user-123' });
+  assert.deepEqual(part, { phrase: challenge, user_id: 'user-123' });
 });
 
 test('only allowed fields and files are forwarded, in a rebuilt multipart body', async () => {
+  const challenge = await issueChallenge();
   const body = multipart(
     { session_id: 'sess-mine', phrase: 'one two', trigger: 'login', services: { exclude: ['voice_recognition'] }, phone_number: '+1', auto_enroll: true },
     { video: 'VIDEO-BYTES', document: 'not-for-this-route' },
@@ -99,7 +121,7 @@ test('only allowed fields and files are forwarded, in a rebuilt multipart body',
   const form = await upstreamForm(rec);
   assert.deepEqual([...form.keys()].sort(), ['request', 'video']);
   assert.deepEqual(JSON.parse(form.get('request')), {
-    session_id: 'sess-mine', phrase: 'one two', trigger: 'login', services: { exclude: ['voice_recognition'] }, user_id: 'user-123',
+    session_id: 'sess-mine', trigger: 'login', services: { exclude: ['voice_recognition'] }, phrase: challenge, user_id: 'user-123',
   });
   assert.equal(await form.get('video').text(), 'VIDEO-BYTES');
   assert.equal(rec.headers.authorization, 'Bearer project-key');
@@ -116,7 +138,8 @@ test('a session_id the user does not own is refused before Biometry is called', 
 });
 
 test('wrong field types are refused', async () => {
-  const res = await post('/api-gateway/v2/liveness', multipart({ phrase: ['one'] }, { video: 'v' }));
+  await issueChallenge();
+  const res = await post('/api-gateway/v2/liveness', multipart({ trigger: ['login'] }, { video: 'v' }));
   assert.equal(res.status, 400);
   assert.equal(received.length, 0);
 });
@@ -128,6 +151,7 @@ test('the query string is dropped, except warmup=true on session start', async (
   assert.equal(received[0].url, '/api-gateway/v2/sessions?warmup=true');
   assert.equal(sessionOwners.get('sess-new'), 'user-123');
 
+  await issueChallenge();
   res = await post('/api-gateway/v2/liveness?phrase=x&vocabulary=y&trigger=z&is_document=true', multipart({}, { video: 'v' }));
   assert.equal(res.status, 200);
   assert.equal(received[1].url, '/api-gateway/v2/liveness');
@@ -205,4 +229,133 @@ test('CORS allows credentials for the configured origin', async () => {
   assert.equal(res.headers.get('access-control-allow-origin'), 'https://app.example.com');
   assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
   assert.equal(res.headers.get('vary'), 'Origin');
+});
+
+// ---------------------------------------------------------------------------
+// Liveness challenge
+// ---------------------------------------------------------------------------
+
+test('generateChallenge gives CHALLENGE_LENGTH distinct digits from CHALLENGE_DIGITS', () => {
+  for (let i = 0; i < 200; i++) {
+    const c = generateChallenge();
+    assert.equal(c.length, CHALLENGE_LENGTH);
+    assert.equal(new Set(c).size, CHALLENGE_LENGTH);
+    for (const d of c) assert.ok(CHALLENGE_DIGITS.includes(d), c);
+  }
+});
+
+test('the stored challenge overwrites the phrase the device sent, on all three calls', async () => {
+  for (const [path, file] of [['liveness', 'video'], ['face-verify', 'video'], ['voice-verify', 'voice']]) {
+    const challenge = await issueChallenge();
+    const res = await post(`/api-gateway/v2/${path}`, multipart({ phrase: 'five two nine one seven three eight', PHRASE: '1234567' }, { [file]: 'v' }));
+    assert.equal(res.status, 200, path);
+    const part = JSON.parse((await upstreamForm(received.at(-1))).get('request'));
+    assert.equal(part.phrase, challenge, path);
+    assert.equal(Object.keys(part).filter((k) => k.toLowerCase() === 'phrase').length, 1);
+  }
+});
+
+test('a challenge is single use', async () => {
+  await issueChallenge();
+  let res = await post('/api-gateway/v2/liveness', multipart({}, { video: 'v' }));
+  assert.equal(res.status, 200);
+  res = await post('/api-gateway/v2/face-verify', multipart({}, { video: 'v' }));
+  assert.equal(res.status, 409);
+  assert.equal(received.length, 1);
+});
+
+test('a missing challenge gives 409 and nothing is sent to Biometry', async () => {
+  const res = await post('/api-gateway/v2/liveness', multipart({ phrase: '12345678' }, { video: 'v' }));
+  assert.equal(res.status, 409);
+  assert.equal(received.length, 0);
+});
+
+test('an expired challenge gives 409', async () => {
+  await issueChallenge();
+  clock += 5 * 60 * 1000;
+  const res = await post('/api-gateway/v2/liveness', multipart({}, { video: 'v' }));
+  assert.equal(res.status, 409);
+  assert.equal(received.length, 0);
+});
+
+test('a challenge just inside its 5 minutes still works', async () => {
+  await issueChallenge();
+  clock += 5 * 60 * 1000 - 1;
+  const res = await post('/api-gateway/v2/liveness', multipart({}, { video: 'v' }));
+  assert.equal(res.status, 200);
+});
+
+test('a challenge issued to another user cannot be used', async () => {
+  const victimsChallenge = await issueChallenge(OTHER_AUTH);
+  const res = await post('/api-gateway/v2/liveness', multipart({ phrase: victimsChallenge, user_id: 'victim' }, { video: 'v' }));
+  assert.equal(res.status, 409);
+  assert.equal(received.length, 0);
+
+  // The victim's own challenge is still there for the victim.
+  const own = await fetch(`${proxyUrl}/api-gateway/v2/liveness`, { method: 'POST', headers: OTHER_AUTH, body: multipart({}, { video: 'v' }) });
+  assert.equal(own.status, 200);
+  assert.equal(JSON.parse((await upstreamForm(received[0])).get('request')).phrase, victimsChallenge);
+});
+
+test('a new challenge replaces the previous one', async () => {
+  const first = await issueChallenge();
+  const second = await issueChallenge();
+  const res = await post('/api-gateway/v2/liveness', multipart({ phrase: first }, { video: 'v' }));
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse((await upstreamForm(received[0])).get('request')).phrase, second);
+});
+
+test('challenge issuance is rate limited per user and needs sign-in', async () => {
+  for (let i = 0; i < 10; i++) await issueChallenge();
+  let res = await fetch(`${proxyUrl}/challenge`, { method: 'POST', headers: APP_AUTH });
+  assert.equal(res.status, 429);
+  assert.ok(res.headers.get('retry-after'));
+  await issueChallenge(OTHER_AUTH); // other users are not affected
+  clock += 60 * 1000;
+  await issueChallenge(); // a new window
+  res = await fetch(`${proxyUrl}/challenge`, { method: 'POST' });
+  assert.equal(res.status, 401);
+});
+
+test('voice enrollment keeps the phrase from the request (no challenge involved)', async () => {
+  const res = await post('/api-gateway/v2/enrollments/voice', multipart({ phrase: 'one two three', vocabulary: 'en_digits' }, { voice: 'v' }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(JSON.parse((await upstreamForm(received[0])).get('request')), { phrase: 'one two three', vocabulary: 'en_digits', user_id: 'user-123' });
+});
+
+// ---------------------------------------------------------------------------
+// Consent
+// ---------------------------------------------------------------------------
+
+test('onboarding consent records authorization and storage consent server-side for the signed-in user', async () => {
+  const res = await post('/onboarding/consent', JSON.stringify({ accepted: true, user_id: 'victim' }), { ...APP_AUTH, 'content-type': 'application/json' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(received.map((r) => r.url), ['/api-consent/consent', '/api-consent/strg-consent']);
+  for (const r of received) {
+    assert.equal(r.headers.authorization, 'Bearer project-key');
+    assert.deepEqual(JSON.parse(r.body.toString()), { is_consent_given: true, user_fullname: 'user-123' });
+  }
+});
+
+test('onboarding consent needs accepted: true and a signed-in user', async () => {
+  let res = await post('/onboarding/consent', JSON.stringify({ accepted: 'yes' }));
+  assert.equal(res.status, 400);
+  res = await post('/onboarding/consent', JSON.stringify({ accepted: true }), {});
+  assert.equal(res.status, 401);
+  assert.equal(received.length, 0);
+});
+
+test('a consent failure upstream is reported and storage consent is not attempted', async () => {
+  nextResponse = { status: 500, body: '{}' };
+  const res = await post('/onboarding/consent', JSON.stringify({ accepted: true }));
+  assert.equal(res.status, 500);
+  assert.equal(received.length, 1);
+});
+
+test('the SDK consent-service calls are not forwarded', async () => {
+  for (const path of ['/api-consent/consent', '/api-consent/strg-consent']) {
+    const res = await post(path, JSON.stringify({ is_consent_given: true, user_fullname: 'victim' }));
+    assert.equal(res.status, 404);
+  }
+  assert.equal(received.length, 0);
 });

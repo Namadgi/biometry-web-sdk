@@ -13,7 +13,8 @@ Proxy mode: the SDK can call your own backend instead of the Biometry API, so th
 - `headers` (an object, or a function called before every request) adds your own headers, for example your app's session token for the proxy. They replace SDK headers with the same name, compared case-insensitively.
 - Options with neither `apiKey` nor `baseUrl` throw `apiKey or baseUrl is required to initialize the SDK.`
 - `credentials` is passed to `fetch`, for cross-origin proxies that use cookies.
-- `examples/proxy-server`: a zero-dependency Node proxy (with a `node --test` suite) that authenticates the caller, accepts only the SDK's paths, rebuilds every request from an allow list with `user_id` set to the signed-in user, refuses foreign `session_id`s, drops the query string, and adds the API key.
+- `headers` and `credentials` only apply with `baseUrl`. In direct mode they are ignored and the constructor logs one `console.warn`, so direct calls to Biometry carry only the API key.
+- `examples/proxy-server`: a zero-dependency Node proxy (with a `node --test` suite) that authenticates the caller, accepts only the SDK's paths, rebuilds every request from an allow list with `user_id` set to the signed-in user, refuses foreign `session_id`s, drops the query string, and adds the API key. It also records consent server-side (`recordConsent()`, `POST /onboarding/consent`) instead of forwarding the SDK's consent calls, and owns the liveness challenge (`POST /challenge`; the stored challenge is written into `phrase` on liveness, face-verify and voice-verify).
 
 ### Unchanged
 
