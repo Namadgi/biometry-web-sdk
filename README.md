@@ -75,9 +75,9 @@ The SDK keeps the request paths and only swaps the host, so `startSession()` cal
 
 [`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite. It also shows the two jobs your backend must do itself in proxy mode:
 
-- **Consent.** Record the user's authorization and storage consent from your backend with your API key (`/api-consent/consent` and `/api-consent/strg-consent`, with your `user_id` as `user_fullname`), for example in your onboarding flow before the first enrollment. The proxy does not forward `giveAuthorizationConsent` / `giveStorageConsent`, so a browser can't record consent for another user.
+- **Consent.** Record the user's authorization and storage consent from your backend with your API key (`PUT /api-gateway/v2/users/{user_id}/consents` with `{"authorization": true, "storage": true}`), for example in your onboarding flow before the first enrollment. The proxy does not forward the SDK's consent calls, so a browser can't record consent for another user.
 - **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge.
-- Your user ids must be at least 3 characters: the consent service requires it.
+- Your user ids must be 3 to 128 characters of `A-Za-z0-9._:@-`.
 
 If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
 
