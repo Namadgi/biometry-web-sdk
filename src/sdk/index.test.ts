@@ -338,3 +338,111 @@ describe('BiometrySDK', () => {
     });
   });
 });
+
+describe('BiometrySDK proxy mode (baseUrl)', () => {
+  const PROXY = 'https://app.example.com/biometry';
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  function lastInit(): RequestInit {
+    const calls = (fetch as jest.Mock).mock.calls;
+    return calls[calls.length - 1][1];
+  }
+
+  it('still requires an API key when no baseUrl is given', () => {
+    expect(() => new BiometrySDK({})).toThrow('API Key is required to initialize the SDK.');
+    expect(() => new BiometrySDK({ apiKey: '' })).toThrow('API Key is required to initialize the SDK.');
+  });
+
+  it('accepts the options form with only an apiKey and keeps direct-mode behaviour', async () => {
+    const sdk = new BiometrySDK({ apiKey: 'k1' });
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+
+    expect(fetch).toHaveBeenCalledWith(`${V2}/sessions`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer k1' },
+      body: undefined,
+    });
+  });
+
+  it('sends requests to baseUrl with no Authorization header when no apiKey is set', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY });
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession({ warmup: true });
+
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions?warmup=true`, expect.any(Object));
+    const headers = lastInit().headers as Record<string, string>;
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain('authorization');
+    expect(lastInit()).not.toHaveProperty('credentials');
+  });
+
+  it('strips trailing slashes from baseUrl', async () => {
+    const sdk = new BiometrySDK({ baseUrl: `${PROXY}//` });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions/sess-1/end`, expect.any(Object));
+  });
+
+  it('routes multipart and consent calls through baseUrl with the same path', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY });
+    const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
+
+    mockOk({ data: {}, meta: {} });
+    await sdk.liveness(videoFile, 'user-1', 'one two');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/liveness`, expect.objectContaining({ method: 'POST' }));
+
+    mockOk({ is_consent_given: true });
+    await sdk.giveAuthorizationConsent(true, 'Jane Doe');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-consent/consent`, expect.any(Object));
+  });
+
+  it('sends static custom headers on every request', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY, headers: { 'X-App-Session': 'abc' } });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
+
+    expect(lastInit().headers).toEqual({ 'X-App-Session': 'abc', 'Content-Type': 'application/json' });
+  });
+
+  it('calls a header function per request so app tokens can refresh', async () => {
+    let n = 0;
+    const sdk = new BiometrySDK({
+      baseUrl: PROXY,
+      headers: async () => ({ Authorization: `Bearer app-jwt-${++n}` }),
+    });
+
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(lastInit().headers).toEqual({ Authorization: 'Bearer app-jwt-1' });
+
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(lastInit().headers).toEqual({ Authorization: 'Bearer app-jwt-2' });
+  });
+
+  it('lets custom headers replace the apiKey Authorization header', async () => {
+    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY, headers: { Authorization: 'Bearer other' } });
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(lastInit().headers).toEqual({ Authorization: 'Bearer other' });
+  });
+
+  it('sends the apiKey to baseUrl when both are set', async () => {
+    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY });
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions`, expect.objectContaining({
+      headers: { Authorization: 'Bearer k1' },
+    }));
+  });
+
+  it('passes credentials through to fetch when set', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY, credentials: 'include' });
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession();
+    expect(lastInit().credentials).toBe('include');
+  });
+});

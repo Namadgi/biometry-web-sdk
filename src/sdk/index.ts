@@ -61,37 +61,100 @@ function compactRequest(request: V2RequestPart): V2RequestPart {
   return out as V2RequestPart;
 }
 
+/** Extra headers sent on every request: a fixed object, or a function called per request. */
+export type BiometryHeaders =
+  | Record<string, string>
+  | (() => Record<string, string> | Promise<Record<string, string>>);
+
+/**
+ * Options for {@link BiometrySDK}. Pass `baseUrl` to send every request to your
+ * own backend proxy instead of the Biometry API, so the project API key never
+ * ships in the browser bundle.
+ */
+export interface BiometrySDKOptions {
+  /**
+   * Biometry project API key, sent as `Authorization: Bearer <apiKey>`.
+   * Required when `baseUrl` is not set. Leave it out in proxy mode: your
+   * proxy adds the key server-side.
+   */
+  apiKey?: string;
+  /**
+   * Origin (plus optional path prefix) that replaces
+   * `https://api.biometrysolutions.com`. Request paths are kept as is, so
+   * `baseUrl: 'https://app.example.com/biometry'` sends session starts to
+   * `https://app.example.com/biometry/api-gateway/v2/sessions`.
+   */
+  baseUrl?: string;
+  /**
+   * Extra headers sent on every request, for example your app's own session
+   * token for the proxy. Applied after the `Authorization` header from
+   * `apiKey`, so a header with the same name here replaces it.
+   */
+  headers?: BiometryHeaders;
+  /**
+   * Passed to `fetch` as `credentials`. Set to `'include'` when the proxy is on
+   * another origin and authenticates with cookies. Not set by default.
+   */
+  credentials?: RequestCredentials;
+}
+
 export class BiometrySDK {
-  private apiKey: string;
+  private readonly apiKey?: string;
+  private readonly baseUrl: string;
+  private readonly extraHeaders?: BiometryHeaders;
+  private readonly credentials?: RequestCredentials;
   private static readonly BASE_URL: string = 'https://api.biometrysolutions.com';
   /** API v2 gateway prefix. */
   private static readonly GATEWAY_V2: string = '/api-gateway/v2';
 
-  constructor(apiKey: string) {
-    if (!apiKey) {
+  /**
+   * @param apiKeyOrOptions - Your project API key (direct mode), or
+   *   {@link BiometrySDKOptions} (for proxy mode, `{ baseUrl }` with no `apiKey`).
+   * @throws {Error} If neither an API key nor a `baseUrl` is given.
+   */
+  constructor(apiKeyOrOptions: string | BiometrySDKOptions) {
+    const options: BiometrySDKOptions = typeof apiKeyOrOptions === 'string'
+      ? { apiKey: apiKeyOrOptions }
+      : (apiKeyOrOptions ?? {});
+
+    if (!options.apiKey && !options.baseUrl) {
       throw new Error('API Key is required to initialize the SDK.');
     }
 
-    this.apiKey = apiKey;
+    this.apiKey = options.apiKey || undefined;
+    this.baseUrl = options.baseUrl
+      ? options.baseUrl.replace(/\/+$/, '')
+      : BiometrySDK.BASE_URL;
+    this.extraHeaders = options.headers;
+    this.credentials = options.credentials;
   }
 
   private async request<T>(path: string, method: string, body?: any, headers?: Record<string, string>):
     Promise<ApiResponse<T>> {
-    const defaultHeaders: HeadersInit = {
-      Authorization: `Bearer ${this.apiKey}`,
-    };
+    const defaultHeaders: Record<string, string> = {};
+    if (this.apiKey) {
+      defaultHeaders.Authorization = `Bearer ${this.apiKey}`;
+    }
 
-    const requestHeaders = { ...defaultHeaders, ...headers };
+    const extra = typeof this.extraHeaders === 'function'
+      ? await this.extraHeaders()
+      : this.extraHeaders;
+
+    const requestHeaders: Record<string, string> = { ...defaultHeaders, ...extra, ...headers };
 
     if (body && !(body instanceof FormData)) {
       requestHeaders['Content-Type'] = 'application/json';
       body = JSON.stringify(body);
     }
-    const response = await fetch(`${BiometrySDK.BASE_URL}${path}`, {
+    const init: RequestInit = {
       method,
       headers: requestHeaders,
       body,
-    });
+    };
+    if (this.credentials) {
+      init.credentials = this.credentials;
+    }
+    const response = await fetch(`${this.baseUrl}${path}`, init);
 
     if (!response.ok) {
       throw await BiometrySDK.toApiError(response);
