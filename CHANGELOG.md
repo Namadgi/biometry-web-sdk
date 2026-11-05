@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.1.0 (BM-527)
+
+Proxy mode: the SDK can call your own backend instead of the Biometry API, so the browser never holds your project API key.
+
+### Added
+
+- `new BiometrySDK(options)` with `apiKey`, `baseUrl`, `headers` and `credentials`. `new BiometrySDK('key')` still works and is the same as `{ apiKey: 'key' }`.
+- `baseUrl` replaces `https://api.biometrysolutions.com` and keeps every request path (`/api-gateway/v2/...`), so a backend proxy can forward requests unchanged.
+- `apiKey` is optional when `baseUrl` is set. Without an API key the SDK sends no `Authorization` header.
+- `headers` (an object, or a function called before every request) adds your own headers, for example your app's session token for the proxy. They replace SDK headers with the same name.
+- `credentials` is passed to `fetch`, for cross-origin proxies that use cookies.
+- `examples/proxy-server`: a zero-dependency Node proxy that authenticates the caller, forwards only the SDK's paths, checks `user_id` and `session_id` ownership, and adds the API key.
+
+### Unchanged
+
+- Without `baseUrl`, requests go to the Biometry API with `Authorization: Bearer <apiKey>` exactly as in 3.0.0, and a missing API key still throws `API Key is required to initialize the SDK.`
+
 ## 3.0.0 (BM-338)
 
 Migrated the SDK to the **Biometry API v2** gateway (`/api-gateway/v2`). This is a breaking release.
