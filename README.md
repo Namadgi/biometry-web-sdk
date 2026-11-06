@@ -91,7 +91,7 @@ The example proxy needs these Biometry API gateway changes deployed, in this ord
 
 If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
 
-`baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` in it; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively. `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
+`baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` in it; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively, except `Content-Type`, which the SDK sets from the body (JSON, or multipart with its boundary). `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
 
 #### Direct mode (server-side or testing)
 
@@ -342,7 +342,7 @@ Creates a new SDK instance. Passing a string is the same as `{ apiKey }`.
 |-----------|------|----------|-------------|
 | `apiKey` | `string` | Unless `baseUrl` is set | Your Biometry project API key, sent as `Authorization: Bearer <apiKey>`. Leave it out in proxy mode. |
 | `baseUrl` | `string` | No | Replaces `https://api.biometrysolutions.com`; request paths are kept. Point it at your backend proxy. |
-| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Proxy mode only. Extra headers sent on every request. They replace an SDK header with the same name (case-insensitively), including `Authorization`. Ignored with a warning without `baseUrl`. |
+| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Proxy mode only. Extra headers sent on every request. They replace an SDK header with the same name (case-insensitively), including `Authorization`. A custom `Content-Type` is dropped: the SDK sets it from the body. Ignored with a warning without `baseUrl`. |
 | `credentials` | `RequestCredentials` | No | Proxy mode only. Passed to `fetch`. Use `'include'` for a cross-origin proxy that authenticates with cookies. Ignored with a warning without `baseUrl`. |
 
 ---
@@ -379,7 +379,7 @@ Submit authorization / storage consent (served by the consent service).
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `isConsentGiven` / `isStorageConsentGiven` | `boolean` | Yes | Whether the user granted consent |
-| `userFullName` | `string` | Yes | User's full name |
+| `userFullName` | `string` | Yes | Your `user_id` for the user (not the person's name); sent as `user_fullname` |
 | `props.sessionId` | `string` | No | Session ID to link with |
 | `props.deviceInfo` | `object` | No | Device metadata |
 

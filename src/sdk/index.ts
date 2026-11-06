@@ -64,18 +64,22 @@ function setHeaders(target: Record<string, string>, source?: Record<string, stri
   }
 }
 
-/** Returns `baseUrl` without trailing slashes, or throws if it is not an absolute http(s) URL. */
+/**
+ * Returns `baseUrl` without surrounding whitespace or trailing slashes, or
+ * throws if it is not an absolute http(s) URL.
+ */
 function normalizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
   let url: URL;
   try {
-    url = new URL(baseUrl);
+    url = new URL(trimmed);
   } catch {
     throw new Error(`baseUrl must be an absolute http or https URL, got "${baseUrl}".`);
   }
-  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(baseUrl)) {
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(trimmed)) {
     throw new Error(`baseUrl must be an absolute http or https URL with no "?" or "#", got "${baseUrl}".`);
   }
-  return trimTrailingSlashes(baseUrl);
+  return trimTrailingSlashes(trimmed);
 }
 
 /** Removes trailing `/` characters without a regex (no backtracking on long inputs). */
@@ -195,6 +199,12 @@ export class BiometrySDK {
     const requestHeaders: Record<string, string> = { ...defaultHeaders };
     setHeaders(requestHeaders, extra);
     setHeaders(requestHeaders, headers);
+    // Content-Type follows the body: JSON gets application/json, and FormData
+    // needs fetch to set multipart/form-data with its boundary. A custom value
+    // would break either, so it is dropped.
+    for (const name of Object.keys(requestHeaders)) {
+      if (name.toLowerCase() === 'content-type') delete requestHeaders[name];
+    }
 
     if (body && !(body instanceof FormData)) {
       setHeaders(requestHeaders, { 'Content-Type': 'application/json' });
@@ -318,12 +328,13 @@ export class BiometrySDK {
    * the API gateway, so this call is unaffected by the gateway v2 migration.
    *
    * @param {boolean} isConsentGiven - Indicates whether the user has given consent.
-   * @param {string} userFullName - The full name of the user giving consent.
+   * @param {string} userFullName - Your `user_id` for the user (the consent service calls it
+   *   `user_fullname`). Not the person's name: the value is the subject of the consent record.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
-   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   * @throws {Error} - If `userFullName` (your user_id) is not provided or if the request fails.
    */
   async giveAuthorizationConsent(
     isConsentGiven: boolean,
@@ -368,12 +379,13 @@ export class BiometrySDK {
    * the API gateway, so this call is unaffected by the gateway v2 migration.
    *
    * @param {boolean} isStorageConsentGiven - Indicates whether the user has given storage consent.
-   * @param {string} userFullName - The full name of the user giving storage consent.
+   * @param {string} userFullName - Your `user_id` for the user (the consent service calls it
+   *   `user_fullname`). Not the person's name: the value is the subject of the consent record.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
-   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   * @throws {Error} - If `userFullName` (your user_id) is not provided or if the request fails.
    */
   async giveStorageConsent(
     isStorageConsentGiven: boolean,

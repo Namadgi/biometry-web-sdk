@@ -455,10 +455,29 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
   });
 
   it('replaces SDK headers case-insensitively instead of sending both', async () => {
-    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY, headers: { authorization: 'Bearer other', 'content-type': 'text/plain' } });
+    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY, headers: { authorization: 'Bearer other', 'x-app': 'a' } });
     mockOk({ meta: {} });
     await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
-    expect(lastInit().headers).toEqual({ authorization: 'Bearer other', 'Content-Type': 'application/json' });
+    expect(lastInit().headers).toEqual({ authorization: 'Bearer other', 'x-app': 'a', 'Content-Type': 'application/json' });
+  });
+
+  it('keeps Content-Type tied to the body: custom values are dropped for JSON and FormData', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY, headers: { 'content-type': 'text/plain' } });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
+    expect(lastInit().headers).toEqual({ 'Content-Type': 'application/json' });
+
+    mockOk({ data: {}, meta: {} });
+    await sdk.liveness(new File(['v'], 'v.mp4', { type: 'video/mp4' }), 'user-1', '12345678');
+    expect(lastInit().headers).toEqual({});
+    expect(lastInit().body).toBeInstanceOf(FormData);
+  });
+
+  it('trims whitespace around baseUrl', async () => {
+    const sdk = new BiometrySDK({ baseUrl: `  ${PROXY}/ \n` });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions/sess-1/end`, expect.any(Object));
   });
 
   it('ignores headers and credentials in direct mode, with one console warning', async () => {
