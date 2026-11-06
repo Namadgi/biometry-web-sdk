@@ -98,13 +98,13 @@ PUT /api-gateway/v2/users/{user_id}/consents   {"authorization": true, "storage"
 be **3 to 128 characters** of `A-Za-z0-9._:@-`. The SDKs' own consent calls are not forwarded,
 so a device can never record consent for someone else.
 
-This example does it in `recordConsent(userId)`, exposed as:
+This example does it in `recordConsent({ apiUrl, apiKey, userId, clientHeaders, signal })`, exposed as:
 
 ```
 POST /onboarding/consent      {"accepted": true}      -> records both for the signed-in user
 ```
 
-It answers `400` for a user id outside 3 to 128 characters and `502` if Biometry refuses. It
+It needs `content-type: application/json`, and answers `400` for a user id outside 3 to 128 characters and `502` if Biometry refuses. It
 passes the user's `user-agent` and IP on, so Biometry's record of the consent shows the user's
 client rather than this server. Call it
 from your onboarding flow once the user has agreed in your app, before the first enrollment.
@@ -139,6 +139,9 @@ keeps its own copy, bound to the signed-in user **and** that session:
   ignores the phrase, so the proxy sends none (needs gateway #147, see above);
 - at most 10 issued per user per minute (`429` with `Retry-After`).
 
+- on liveness, `services` may not exclude (or leave out of `include`) `active_speaker_detection` or
+  `visual_speech_recognition`, the services that check the spoken challenge (`400`).
+
 The store is an in-memory `Map`. In production use shared storage with atomic updates, for
 example a Redis hash per user and session with `EXPIRE 300`: reserve a route with
 `HSETNX <key> <route> pending`, mark it used with `HSET <key> <route> used` after a `2xx`, and
@@ -160,6 +163,19 @@ node --test                                                  # tests, no network
 | `ALLOWED_ORIGIN` | (unset) | Your web app's exact origin, if it is served from another origin. Enables CORS with credentials, so cookies (`credentials: 'include'`) or an `Authorization` header both work. |
 | `ALLOWED_HEADERS` | (unset) | Comma-separated extra request headers the page may send cross-origin, for example `x-csrf-token`. Added to `authorization, content-type, x-client-app, x-client-app-version`. |
 | `TRUST_PROXY` | `0` | How many proxies or load balancers in front of this server append to `x-forwarded-for`. `0` uses the socket address. |
+| `UPSTREAM_TIMEOUT_MS` | `120000` | How long a Biometry call may take before the proxy answers `504`. Keep it above your slowest call. |
+
+**Other origins.** Browser requests whose `Origin` is neither `ALLOWED_ORIGIN` nor this server's
+own host get `403`, and `/challenge` and `/onboarding/consent` need
+`content-type: application/json`. That stops another site from making a signed-in user's browser
+call the proxy with their cookies (a form or `text/plain` POST needs no CORS preflight). Requests
+without `Origin` (native apps, server-to-server) are allowed. If a reverse proxy in front rewrites
+`Host`, set `ALLOWED_ORIGIN` to your page's origin.
+
+**Shared storage.** `sessions` and `challenges` are objects with the methods of `SessionStore` and
+`ChallengeStore` (`owner`, `allowStart`, `add`, `delete`, `issue`, `reserve` returning
+`{ value, commit, release }`, `deleteSession`). Each may return a Promise, so a Redis-backed store
+works; make `reserve` atomic (for example `HSETNX`).
 
 **CORS headers.** A preflight gets back only the headers it asked for
 (`Access-Control-Request-Headers`) that are on the allow list (`CORS_ALLOWED_HEADERS` plus
@@ -188,7 +204,7 @@ createProxy({
 ```
 
 `server.mjs` also exports `ROUTES`, `recordConsent`, `SessionStore`, `ChallengeStore`,
-`generateChallenge`, `clientAddress`, `CORS_ALLOWED_HEADERS`, `CHALLENGE_LENGTH`,
+`generateChallenge`, `clientAddress`, `CORS_ALLOWED_HEADERS`, `CHALLENGE_SERVICES`, `CHALLENGE_LENGTH`,
 `CHALLENGE_DIGITS` and `CHALLENGE_VOCABULARY`.
 
 Before production, keep sessions and challenges in shared storage instead of memory, add rate

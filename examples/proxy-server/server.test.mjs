@@ -324,7 +324,10 @@ test('clientAddress uses the socket address unless trustProxy is set', () => {
   // One trusted load balancer appended the address it saw; the client-written entry is ignored.
   assert.equal(clientAddress(req('6.6.6.6, 203.0.113.7'), 1), '203.0.113.7');
   assert.equal(clientAddress(req('6.6.6.6, 203.0.113.7, 10.0.0.2'), 2), '203.0.113.7');
-  assert.equal(clientAddress(req('203.0.113.7'), 3), '203.0.113.7');
+  // Fewer entries than trusted proxies, or not an IP: the client may have written it.
+  assert.equal(clientAddress(req('203.0.113.7'), 3), '10.0.0.9');
+  assert.equal(clientAddress(req('6.6.6.6, not-an-ip'), 1), '10.0.0.9');
+  assert.equal(clientAddress(req('6.6.6.6, 2001:db8::1'), 1), '2001:db8::1');
   assert.throws(() => createProxy({ apiKey: 'k', authenticate: () => 'u', trustProxy: -1 }), /trustProxy/);
 });
 
@@ -510,6 +513,90 @@ test('ChallengeStore reserve: commit uses the route, release frees it, both only
   assert.ok(store.reserve('u', 's', 'liveness'));
 });
 
+test('liveness may not skip the services that check the challenge', async () => {
+  await issueChallenge();
+  for (const services of [
+    { exclude: ['active_speaker_detection'] },
+    { exclude: ['visual_speech_recognition', 'face_recognition'] },
+    { include: ['face_liveness_detection'] },
+  ]) {
+    const res = await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine', services }, { video: 'v' }));
+    assert.equal(res.status, 400, JSON.stringify(services));
+  }
+  assert.equal(received.length, 0);
+  const ok = { exclude: ['voice_recognition'] };
+  const res = await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine', services: ok }, { video: 'v' }));
+  assert.equal(res.status, 200);
+  assert.deepEqual((await upstreamPart(received[0])).services, ok);
+});
+
+test('a Biometry call that takes too long gives 504 and leaves the challenge usable', async () => {
+  const challenge = await issueChallenge();
+  const slow = createProxy({
+    apiKey: 'project-key', apiUrl: upstreamUrl, authenticate: (req) => USERS[req.headers.authorization],
+    sessions, challenges, sweepIntervalMs: 0, upstreamTimeoutMs: 50,
+  });
+  const slowUrl = await listen(slow);
+  let open;
+  upstreamGate = new Promise((resolve) => { open = resolve; });
+  try {
+    const res = await fetch(`${slowUrl}/api-gateway/v2/liveness`, {
+      method: 'POST', headers: APP_AUTH, body: multipart({ session_id: 'sess-mine' }, { video: 'v' }),
+    });
+    assert.equal(res.status, 504);
+  } finally {
+    open();
+    upstreamGate = undefined;
+    slow.close();
+  }
+  assert.equal((await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }))).status, 200);
+  assert.equal((await upstreamPart(received.at(-1))).phrase, challenge);
+});
+
+test('stores whose methods return Promises work', async () => {
+  const asyncStore = (store) => new Proxy(store, {
+    get: (target, key) => {
+      const value = target[key];
+      if (typeof value !== 'function') return value;
+      return (...args) => {
+        const result = value.apply(target, args);
+        if (result && typeof result === 'object' && typeof result.commit === 'function') {
+          return Promise.resolve({
+            value: result.value,
+            commit: async () => result.commit(),
+            release: async () => result.release(),
+          });
+        }
+        return Promise.resolve(result);
+      };
+    },
+  });
+  const proxy2 = createProxy({
+    apiKey: 'project-key', apiUrl: upstreamUrl, authenticate: (req) => USERS[req.headers.authorization],
+    sessions: asyncStore(sessions), challenges: asyncStore(challenges), sweepIntervalMs: 0,
+  });
+  const url2 = await listen(proxy2);
+  try {
+    const call = (path, body, headers = APP_AUTH) => fetch(`${url2}${path}`, { method: 'POST', headers, body });
+    let res = await call('/challenge', JSON.stringify({ session_id: 'sess-mine' }), { ...APP_AUTH, 'content-type': 'application/json' });
+    assert.equal(res.status, 200);
+    const { challenge } = await res.json();
+    res = await call('/api-gateway/v2/liveness', multipart({ session_id: 'sess-other' }, { video: 'v' }));
+    assert.equal(res.status, 403);
+    res = await call('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }));
+    assert.equal(res.status, 200);
+    assert.equal((await upstreamPart(received[0])).phrase, challenge);
+    res = await call('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }));
+    assert.equal(res.status, 409);
+    nextResponse = { body: '{"data":{"session_id":"sess-async"},"meta":{}}' };
+    res = await call('/api-gateway/v2/sessions', undefined);
+    assert.equal(res.status, 200);
+    assert.equal(sessions.owner('sess-async'), 'user-123');
+  } finally {
+    proxy2.close();
+  }
+});
+
 test('a new challenge for the session replaces the old one and resets its uses', async () => {
   const first = await issueChallenge();
   assert.equal((await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }))).status, 200);
@@ -570,6 +657,29 @@ test('a consent failure upstream gives 502', async () => {
   const res = await postJson('/onboarding/consent', { accepted: true });
   assert.equal(res.status, 502);
   assert.equal(received.length, 1);
+});
+
+test('the proxy\'s own routes need a JSON body, so a cross-site form or text/plain POST is refused', async () => {
+  for (const path of ['/onboarding/consent', '/challenge']) {
+    const res = await post(path, JSON.stringify({ accepted: true, session_id: 'sess-mine' }), { ...APP_AUTH, 'content-type': 'text/plain' });
+    assert.equal(res.status, 415, path);
+  }
+  assert.equal(received.length, 0);
+});
+
+test('browser requests from another origin are refused; the app origin, same host and no Origin are allowed', async () => {
+  const host = new URL(proxyUrl).host;
+  let res = await postJson('/onboarding/consent', { accepted: true }, { ...APP_AUTH, origin: 'https://evil.example' });
+  assert.equal(res.status, 403);
+  res = await post('/api-gateway/v2/face-verify', multipart({ session_id: 'sess-mine' }, { video: 'v' }), { ...APP_AUTH, origin: 'null' });
+  assert.equal(res.status, 403);
+  assert.equal(received.length, 0);
+  res = await postJson('/onboarding/consent', { accepted: true }, { ...APP_AUTH, origin: 'https://app.example.com' });
+  assert.equal(res.status, 200);
+  res = await postJson('/onboarding/consent', { accepted: true }, { ...APP_AUTH, origin: `http://${host}` });
+  assert.equal(res.status, 200);
+  res = await postJson('/onboarding/consent', { accepted: true });
+  assert.equal(res.status, 200);
 });
 
 test('the SDK consent calls are not forwarded', async () => {
