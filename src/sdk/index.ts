@@ -75,7 +75,14 @@ function normalizeBaseUrl(baseUrl: string): string {
   if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(baseUrl)) {
     throw new Error(`baseUrl must be an absolute http or https URL with no "?" or "#", got "${baseUrl}".`);
   }
-  return baseUrl.replace(/\/+$/, '');
+  return trimTrailingSlashes(baseUrl);
+}
+
+/** Removes trailing `/` characters without a regex (no backtracking on long inputs). */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
 }
 
 function isEmpty(value: unknown): boolean {

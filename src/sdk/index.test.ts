@@ -400,6 +400,16 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions/sess-1/end`, expect.any(Object));
   });
 
+  it('trims a long run of slashes quickly and keeps inner slashes', async () => {
+    const slashes = '/'.repeat(100_000);
+    const started = Date.now();
+    const sdk = new BiometrySDK({ baseUrl: `${PROXY}/a${slashes}b${slashes}` });
+    expect(Date.now() - started).toBeLessThan(1000);
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/a${slashes}b/api-gateway/v2/sessions/sess-1/end`, expect.any(Object));
+  });
+
   it('routes multipart and consent calls through baseUrl with the same path', async () => {
     const sdk = new BiometrySDK({ baseUrl: PROXY });
     const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
