@@ -48,6 +48,47 @@ interface V2RequestPart {
   services?: { include?: string[]; exclude?: string[] };
 }
 
+/**
+ * Copies `source` into `target`, replacing any header of the same name
+ * regardless of case, so `authorization` overrides `Authorization` instead of
+ * both being sent (which `fetch` would join into one comma-separated value).
+ */
+function setHeaders(target: Record<string, string>, source?: Record<string, string>): void {
+  if (!source) return;
+  for (const [name, value] of Object.entries(source)) {
+    const lower = name.toLowerCase();
+    for (const existing of Object.keys(target)) {
+      if (existing.toLowerCase() === lower) delete target[existing];
+    }
+    target[name] = value;
+  }
+}
+
+/**
+ * Returns `baseUrl` without surrounding whitespace or trailing slashes, or
+ * throws if it is not an absolute http(s) URL.
+ */
+function normalizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(`baseUrl must be an absolute http or https URL, got "${baseUrl}".`);
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(trimmed)) {
+    throw new Error(`baseUrl must be an absolute http or https URL with no "?" or "#", got "${baseUrl}".`);
+  }
+  return trimTrailingSlashes(trimmed);
+}
+
+/** Removes trailing `/` characters without a regex (no backtracking on long inputs). */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
+}
+
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === '';
 }
@@ -61,37 +102,123 @@ function compactRequest(request: V2RequestPart): V2RequestPart {
   return out as V2RequestPart;
 }
 
+/** Extra headers sent on every request: a fixed object, or a function called per request. */
+export type BiometryHeaders =
+  | Record<string, string>
+  | (() => Record<string, string> | Promise<Record<string, string>>);
+
+/**
+ * Options for {@link BiometrySDK}. Pass `baseUrl` to send every request to your
+ * own backend proxy instead of the Biometry API, so the project API key never
+ * ships in the browser bundle.
+ */
+export interface BiometrySDKOptions {
+  /**
+   * Biometry project API key, sent as `Authorization: Bearer <apiKey>`.
+   * Required when `baseUrl` is not set. Leave it out in proxy mode: your
+   * proxy adds the key server-side.
+   */
+  apiKey?: string;
+  /**
+   * Absolute http(s) origin (plus optional path prefix) that replaces
+   * `https://api.biometrysolutions.com`. Request paths are kept as is, so
+   * `baseUrl: 'https://app.example.com/biometry'` sends session starts to
+   * `https://app.example.com/biometry/api-gateway/v2/sessions`.
+   */
+  baseUrl?: string;
+  /**
+   * Extra headers sent on every request, for example your app's own session
+   * token for the proxy. Applied after the `Authorization` header from
+   * `apiKey`, so a header with the same name here (compared
+   * case-insensitively) replaces it. Only used with `baseUrl`; without it they
+   * are ignored with a console warning.
+   */
+  headers?: BiometryHeaders;
+  /**
+   * Passed to `fetch` as `credentials`. Set to `'include'` when the proxy is on
+   * another origin and authenticates with cookies. Not set by default. Only
+   * used with `baseUrl`; without it, it is ignored with a console warning.
+   */
+  credentials?: RequestCredentials;
+}
+
 export class BiometrySDK {
-  private apiKey: string;
+  private readonly apiKey?: string;
+  private readonly baseUrl: string;
+  private readonly extraHeaders?: BiometryHeaders;
+  private readonly credentials?: RequestCredentials;
   private static readonly BASE_URL: string = 'https://api.biometrysolutions.com';
   /** API v2 gateway prefix. */
   private static readonly GATEWAY_V2: string = '/api-gateway/v2';
 
-  constructor(apiKey: string) {
-    if (!apiKey) {
-      throw new Error('API Key is required to initialize the SDK.');
+  /**
+   * @param apiKeyOrOptions - Your project API key (direct mode), or
+   *   {@link BiometrySDKOptions} (for proxy mode, `{ baseUrl }` with no `apiKey`).
+   * @throws {Error} If neither an API key nor a `baseUrl` is given, or if
+   *   `baseUrl` is not an absolute http(s) URL with no `?` or `#`.
+   */
+  constructor(apiKeyOrOptions: string | BiometrySDKOptions) {
+    if (typeof apiKeyOrOptions === 'string' || apiKeyOrOptions == null) {
+      if (!apiKeyOrOptions) {
+        throw new Error('API Key is required to initialize the SDK.');
+      }
+    }
+    const options: BiometrySDKOptions = typeof apiKeyOrOptions === 'string'
+      ? { apiKey: apiKeyOrOptions }
+      : apiKeyOrOptions;
+
+    if (!options.apiKey && !options.baseUrl) {
+      throw new Error('apiKey or baseUrl is required to initialize the SDK.');
     }
 
-    this.apiKey = apiKey;
+    this.apiKey = options.apiKey || undefined;
+    this.baseUrl = options.baseUrl
+      ? normalizeBaseUrl(options.baseUrl)
+      : BiometrySDK.BASE_URL;
+    if (options.baseUrl) {
+      this.extraHeaders = options.headers;
+      this.credentials = options.credentials;
+    } else if (options.headers || options.credentials) {
+      // Direct mode talks to the Biometry API itself, which only needs the API
+      // key. Custom headers and credentials are meant for your own proxy.
+      console.warn('BiometrySDK: `headers` and `credentials` only apply with `baseUrl` (proxy mode); they are ignored.');
+    }
   }
 
   private async request<T>(path: string, method: string, body?: any, headers?: Record<string, string>):
     Promise<ApiResponse<T>> {
-    const defaultHeaders: HeadersInit = {
-      Authorization: `Bearer ${this.apiKey}`,
-    };
+    const defaultHeaders: Record<string, string> = {};
+    if (this.apiKey) {
+      defaultHeaders.Authorization = `Bearer ${this.apiKey}`;
+    }
 
-    const requestHeaders = { ...defaultHeaders, ...headers };
+    const extra = typeof this.extraHeaders === 'function'
+      ? await this.extraHeaders()
+      : this.extraHeaders;
+
+    const requestHeaders: Record<string, string> = { ...defaultHeaders };
+    setHeaders(requestHeaders, extra);
+    setHeaders(requestHeaders, headers);
+    // Content-Type follows the body: JSON gets application/json, and FormData
+    // needs fetch to set multipart/form-data with its boundary. A custom value
+    // would break either, so it is dropped.
+    for (const name of Object.keys(requestHeaders)) {
+      if (name.toLowerCase() === 'content-type') delete requestHeaders[name];
+    }
 
     if (body && !(body instanceof FormData)) {
-      requestHeaders['Content-Type'] = 'application/json';
+      setHeaders(requestHeaders, { 'Content-Type': 'application/json' });
       body = JSON.stringify(body);
     }
-    const response = await fetch(`${BiometrySDK.BASE_URL}${path}`, {
+    const init: RequestInit = {
       method,
       headers: requestHeaders,
       body,
-    });
+    };
+    if (this.credentials) {
+      init.credentials = this.credentials;
+    }
+    const response = await fetch(`${this.baseUrl}${path}`, init);
 
     if (!response.ok) {
       throw await BiometrySDK.toApiError(response);
@@ -201,12 +328,13 @@ export class BiometrySDK {
    * the API gateway, so this call is unaffected by the gateway v2 migration.
    *
    * @param {boolean} isConsentGiven - Indicates whether the user has given consent.
-   * @param {string} userFullName - The full name of the user giving consent.
+   * @param {string} userFullName - Your `user_id` for the user (the consent service calls it
+   *   `user_fullname`). Not the person's name: the value is the subject of the consent record.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
-   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   * @throws {Error} - If `userFullName` (your user_id) is not provided or if the request fails.
    */
   async giveAuthorizationConsent(
     isConsentGiven: boolean,
@@ -251,12 +379,13 @@ export class BiometrySDK {
    * the API gateway, so this call is unaffected by the gateway v2 migration.
    *
    * @param {boolean} isStorageConsentGiven - Indicates whether the user has given storage consent.
-   * @param {string} userFullName - The full name of the user giving storage consent.
+   * @param {string} userFullName - Your `user_id` for the user (the consent service calls it
+   *   `user_fullname`). Not the person's name: the value is the subject of the consent record.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
-   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   * @throws {Error} - If `userFullName` (your user_id) is not provided or if the request fails.
    */
   async giveStorageConsent(
     isStorageConsentGiven: boolean,
