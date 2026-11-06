@@ -3,7 +3,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {
-  createProxy, recordConsent, ChallengeStore, SessionStore, generateChallenge,
+  createProxy, recordConsent, ChallengeStore, SessionStore, generateChallenge, clientAddress,
   CHALLENGE_LENGTH, CHALLENGE_DIGITS, CHALLENGE_VOCABULARY,
 } from './server.mjs';
 
@@ -16,6 +16,7 @@ let upstream;
 let upstreamUrl;
 let received; // requests the fake Biometry API got
 let nextResponse; // what the fake Biometry API answers next
+let upstreamGate; // when set, the fake Biometry API waits for this promise before answering
 
 let proxy;
 let proxyUrl;
@@ -35,6 +36,7 @@ before(async () => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     received.push({ method: req.method, url: req.url, headers: req.headers, body: Buffer.concat(chunks) });
+    if (upstreamGate) await upstreamGate;
     const { status = 200, headers = { 'content-type': 'application/json' }, body = '{"data":{},"meta":{}}' } =
       nextResponse ?? {};
     res.writeHead(status, headers);
@@ -51,6 +53,7 @@ before(async () => {
     sessions: sessionsProxy,
     challenges: challengesProxy,
     allowedOrigin: 'https://app.example.com',
+    allowedHeaders: ['X-CSRF-Token'],
   });
   proxyUrl = await listen(proxy);
 });
@@ -63,6 +66,7 @@ after(() => {
 beforeEach(() => {
   received = [];
   nextResponse = undefined;
+  upstreamGate = undefined;
   clock = 1_000_000;
   sessions = new SessionStore({ now });
   sessions.add('sess-mine', 'user-123');
@@ -299,7 +303,45 @@ test('CORS allows credentials for the configured origin', async () => {
   assert.equal(res.status, 204);
   assert.equal(res.headers.get('access-control-allow-origin'), 'https://app.example.com');
   assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
-  assert.equal(res.headers.get('vary'), 'Origin');
+  assert.equal(res.headers.get('vary'), 'Origin, Access-Control-Request-Headers');
+  assert.equal(res.headers.get('access-control-allow-headers'),
+    'authorization, content-type, x-client-app, x-client-app-version, x-csrf-token');
+});
+
+test('CORS allows only the requested headers that are on the allow list', async () => {
+  const res = await fetch(`${proxyUrl}/api-gateway/v2/liveness`, {
+    method: 'OPTIONS',
+    headers: { 'access-control-request-headers': 'Authorization, X-Evil, content-type, x-csrf-token' },
+  });
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get('access-control-allow-headers'), 'authorization, content-type, x-csrf-token');
+});
+
+test('clientAddress uses the socket address unless trustProxy is set', () => {
+  const req = (xff) => ({ socket: { remoteAddress: '10.0.0.9' }, headers: xff ? { 'x-forwarded-for': xff } : {} });
+  assert.equal(clientAddress(req('6.6.6.6'), 0), '10.0.0.9');
+  assert.equal(clientAddress(req(), 1), '10.0.0.9');
+  // One trusted load balancer appended the address it saw; the client-written entry is ignored.
+  assert.equal(clientAddress(req('6.6.6.6, 203.0.113.7'), 1), '203.0.113.7');
+  assert.equal(clientAddress(req('6.6.6.6, 203.0.113.7, 10.0.0.2'), 2), '203.0.113.7');
+  assert.equal(clientAddress(req('203.0.113.7'), 3), '203.0.113.7');
+  assert.throws(() => createProxy({ apiKey: 'k', authenticate: () => 'u', trustProxy: -1 }), /trustProxy/);
+});
+
+test('sweep drops expired sessions, challenges and ended rate-limit windows', () => {
+  const s = new SessionStore({ now });
+  s.add('old', 'user-123');
+  s.allowStart('user-123');
+  const c = new ChallengeStore({ now });
+  c.issue('user-123', 'old');
+  clock += 60 * 60 * 1000;
+  s.add('new', 'user-123');
+  s.sweep();
+  c.sweep();
+  assert.deepEqual([...s.owners.keys()], ['new']);
+  assert.equal(s.starts.windows.size, 0);
+  assert.equal(c.challenges.size, 0);
+  assert.equal(c.issued.windows.size, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -392,6 +434,80 @@ test('a challenge issued to another user cannot be used', async () => {
   res = await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-other' }, { video: 'v' }), OTHER_AUTH);
   assert.equal(res.status, 200);
   assert.equal((await upstreamPart(received[0])).phrase, victimsChallenge);
+});
+
+test('an upstream 5xx does not use the challenge; the retry gets the same one', async () => {
+  const challenge = await issueChallenge();
+  nextResponse = { status: 503, body: '{"error":"busy"}' };
+  const body = () => multipart({ session_id: 'sess-mine' }, { video: 'v' });
+  assert.equal((await post('/api-gateway/v2/liveness', body())).status, 503);
+  nextResponse = undefined;
+  assert.equal((await post('/api-gateway/v2/liveness', body())).status, 200);
+  assert.equal((await upstreamPart(received[1])).phrase, challenge);
+  assert.equal((await post('/api-gateway/v2/liveness', body())).status, 409);
+});
+
+test('a network error does not use the challenge', async () => {
+  const challenge = await issueChallenge();
+  const dead = http.createServer();
+  const deadUrl = await listen(dead);
+  await new Promise((resolve) => dead.close(resolve));
+  const broken = createProxy({
+    apiKey: 'project-key', apiUrl: deadUrl, authenticate: (req) => USERS[req.headers.authorization],
+    sessions, challenges, sweepIntervalMs: 0,
+  });
+  const brokenUrl = await listen(broken);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const res = await fetch(`${brokenUrl}/api-gateway/v2/liveness`, {
+      method: 'POST', headers: APP_AUTH, body: multipart({ session_id: 'sess-mine' }, { video: 'v' }),
+    });
+    assert.equal(res.status, 502);
+  } finally {
+    console.error = original;
+    broken.close();
+  }
+  assert.equal((await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }))).status, 200);
+  assert.equal((await upstreamPart(received[0])).phrase, challenge);
+});
+
+test('a concurrent double submit cannot use one challenge twice', async () => {
+  await issueChallenge();
+  let open;
+  upstreamGate = new Promise((resolve) => { open = resolve; });
+  const first = post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }));
+  while (received.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+  // The first request is waiting on Biometry with the challenge reserved.
+  const second = await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }));
+  assert.equal(second.status, 409);
+  // voice-verify has its own use and is not blocked by the liveness reservation.
+  upstreamGate = undefined;
+  assert.equal((await post('/api-gateway/v2/voice-verify', multipart({ session_id: 'sess-mine' }, { voice: 'v' }))).status, 200);
+  open();
+  assert.equal((await first).status, 200);
+  assert.equal((await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }))).status, 409);
+  assert.equal(received.length, 2);
+});
+
+test('ChallengeStore reserve: commit uses the route, release frees it, both only once', () => {
+  const store = new ChallengeStore({ now, generate: () => '12345678' });
+  store.issue('u', 's');
+  const r1 = store.reserve('u', 's', 'liveness');
+  assert.equal(r1.value, '12345678');
+  assert.equal(store.reserve('u', 's', 'liveness'), undefined); // in flight
+  r1.release();
+  r1.commit(); // ignored: already settled
+  const r2 = store.reserve('u', 's', 'liveness');
+  assert.ok(r2);
+  r2.commit();
+  r2.release(); // ignored
+  assert.equal(store.reserve('u', 's', 'liveness'), undefined); // used
+  // A reservation on a replaced challenge does not delete the new one.
+  const r3 = store.reserve('u', 's', 'voice-verify');
+  store.issue('u', 's');
+  r3.commit();
+  assert.ok(store.reserve('u', 's', 'liveness'));
 });
 
 test('a new challenge for the session replaces the old one and resets its uses', async () => {

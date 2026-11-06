@@ -14,6 +14,24 @@ const sdk = new BiometrySDK({
 });
 ```
 
+In proxy mode the web SDK methods still take a `userId` and a `phrase`. Pass your backend's
+id for the signed-in user as `userId` (the same value `authenticate()` returns; the proxy sets
+`user_id` from the session anyway), and pass the challenge the app displayed as `phrase` on
+`liveness()` and `voiceVerify()`. The proxy overwrites the phrase with its stored copy, but the
+SDK still requires a non-empty value.
+
+```ts
+const sessionId = (await sdk.startSession()).body.data.session_id;
+const res = await fetch('http://localhost:3002/challenge', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${yourAppSessionToken}`, 'content-type': 'application/json' },
+  body: JSON.stringify({ session_id: sessionId }),
+});
+const { challenge } = await res.json();
+showDigits(challenge); // the user reads these on camera
+await sdk.liveness(video, currentUser.id, challenge, { sessionId });
+```
+
 ```dart
 // Flutter
 final biometry = await Biometry.initialize(
@@ -22,6 +40,17 @@ final biometry = await Biometry.initialize(
   headersProvider: () async => {'Authorization': 'Bearer ${await auth.token()}'},
 );
 ```
+
+## Gateway versions it needs
+
+Merge and deploy order: **biometry-api-gateway #147, then #148, then this example.**
+
+- **Consent** goes through `PUT /api-gateway/v2/users/{user_id}/consents`, added by
+  biometry-api-gateway PR #148 (BM-520). Until that is deployed, `POST /onboarding/consent`
+  answers `502` (Biometry answers `404`).
+- **face-verify** is sent **without a phrase**. That is only accepted once biometry-api-gateway
+  PR #147 is deployed, which makes `phrase` optional on v2 face-verify. The gateway currently on
+  `main` still requires it, so face-verify through this proxy fails with a `400` until then.
 
 ## What it does
 
@@ -101,15 +130,19 @@ keeps its own copy, bound to the signed-in user **and** that session:
 - **liveness** and **voice-verify** can each use it once, so one recording can go to both; a
   second use on the same route, another session's challenge, or an expired one gets `409` and
   nothing is sent to Biometry. Both calls must send the `session_id`;
+- a use only counts once Biometry answers `2xx`. The route is reserved while the call is in
+  flight, so a concurrent double submit gets `409`, and released if Biometry answers anything
+  else or cannot be reached, so the user can retry with the same digits;
 - on those calls the proxy writes the challenge into `request.phrase` and pins `vocabulary` to
   `en_digits`, ignoring whatever the device sent;
 - **face-verify** needs no challenge: the gateway runs face recognition only there, which
-  ignores the phrase, so the proxy sends none;
+  ignores the phrase, so the proxy sends none (needs gateway #147, see above);
 - at most 10 issued per user per minute (`429` with `Retry-After`).
 
 The store is an in-memory `Map`. In production use shared storage with atomic updates, for
-example a Redis key per user and session with `EXPIRE 300`, marking each route used with
-`HSETNX`.
+example a Redis hash per user and session with `EXPIRE 300`: reserve a route with
+`HSETNX <key> <route> pending`, mark it used with `HSET <key> <route> used` after a `2xx`, and
+`HDEL` it if the call failed.
 
 ## Run it
 
@@ -125,6 +158,23 @@ node --test                                                  # tests, no network
 | `BIOMETRY_API_URL` | `https://api.biometrysolutions.com` | Where requests are sent. |
 | `PORT` | `3002` | Listen port. |
 | `ALLOWED_ORIGIN` | (unset) | Your web app's exact origin, if it is served from another origin. Enables CORS with credentials, so cookies (`credentials: 'include'`) or an `Authorization` header both work. |
+| `ALLOWED_HEADERS` | (unset) | Comma-separated extra request headers the page may send cross-origin, for example `x-csrf-token`. Added to `authorization, content-type, x-client-app, x-client-app-version`. |
+| `TRUST_PROXY` | `0` | How many proxies or load balancers in front of this server append to `x-forwarded-for`. `0` uses the socket address. |
+
+**CORS headers.** A preflight gets back only the headers it asked for
+(`Access-Control-Request-Headers`) that are on the allow list (`CORS_ALLOWED_HEADERS` plus
+`allowedHeaders` / `ALLOWED_HEADERS`). If your app sends its own auth header through the SDK's
+`headers` option, add it there. These headers only reach this server; they are not forwarded to
+Biometry.
+
+**Behind a load balancer.** The client IP passed into the consent record is the socket address,
+which behind a load balancer is the load balancer. Set `trustProxy` (or `TRUST_PROXY`) to the
+number of proxies that append to `x-forwarded-for`, and the proxy uses the address the outermost
+one saw. Leave it at `0` when nothing is in front: clients can write `x-forwarded-for` themselves.
+
+**Memory.** Sessions, challenges and rate-limit windows live in `Map`s. Expired entries are
+dropped when read and by a sweep every minute (`sweepIntervalMs`, `0` turns it off). With shared
+storage, expiry does this for you.
 
 In your own code, import it and pass your auth:
 
@@ -138,7 +188,8 @@ createProxy({
 ```
 
 `server.mjs` also exports `ROUTES`, `recordConsent`, `SessionStore`, `ChallengeStore`,
-`generateChallenge`, `CHALLENGE_LENGTH`, `CHALLENGE_DIGITS` and `CHALLENGE_VOCABULARY`.
+`generateChallenge`, `clientAddress`, `CORS_ALLOWED_HEADERS`, `CHALLENGE_LENGTH`,
+`CHALLENGE_DIGITS` and `CHALLENGE_VOCABULARY`.
 
 Before production, keep sessions and challenges in shared storage instead of memory, add rate
 limits to the other routes, and serve it over HTTPS.

@@ -89,6 +89,14 @@ class RateLimiter {
     w.count += 1;
     return true;
   }
+
+  /** Drops windows that have ended, so the map does not grow with every user ever seen. */
+  sweep() {
+    const now = this.now();
+    for (const [key, w] of this.windows) {
+      if (now - w.start >= this.windowMs) this.windows.delete(key);
+    }
+  }
 }
 
 /**
@@ -128,6 +136,15 @@ export class SessionStore {
   delete(sessionId) {
     this.owners.delete(sessionId);
   }
+
+  /** Drops expired sessions and ended rate-limit windows. createProxy() calls it every minute. */
+  sweep() {
+    const now = this.now();
+    for (const [id, entry] of this.owners) {
+      if (entry.expiresAt <= now) this.owners.delete(id);
+    }
+    this.starts.sweep();
+  }
 }
 
 /** Routes that consume the challenge. Each may use it once per session. */
@@ -138,15 +155,22 @@ const CHALLENGE_ROUTES = ['liveness', 'voice-verify'];
  * 5 minutes. Liveness and voice-verify can each use it once (so one recording
  * can go to both); a new challenge for the session replaces the old one.
  *
+ * A route's use is two steps: `reserve()` before the Biometry call, then
+ * `commit()` when Biometry answered 2xx, or `release()` when it did not (any
+ * other status, or a network error), so a failed upstream call does not burn
+ * the challenge. While a route is reserved, another request for it gets
+ * nothing, so a double submit can't use one challenge twice.
+ *
  * DEMO ONLY: in production keep this in shared storage, for example a Redis
- * hash per user+session with `EXPIRE 300`, and mark each route used with an
- * atomic `HSETNX` (or take it with `GETDEL`, Redis 6.2+, if one route is enough).
+ * hash per user+session with `EXPIRE 300`: reserve a route with an atomic
+ * `HSETNX <key> <route> pending`, commit with `HSET <key> <route> used`, and
+ * release with `HDEL <key> <route>` (only while it is still `pending`).
  */
 export class ChallengeStore {
   constructor({ now = Date.now, generate = generateChallenge } = {}) {
     this.now = now;
     this.generate = generate;
-    this.challenges = new Map(); // `${userId}\n${sessionId}` -> { value, expiresAt, used: Set }
+    this.challenges = new Map(); // `${userId}\n${sessionId}` -> { value, expiresAt, used: Set, pending: Set }
     this.issued = new RateLimiter(CHALLENGE_RATE_LIMIT, RATE_WINDOW_MS, now);
   }
 
@@ -155,13 +179,19 @@ export class ChallengeStore {
     if (!this.issued.allow(userId)) return undefined;
     const value = this.generate();
     this.challenges.set(`${userId}\n${sessionId}`, {
-      value, expiresAt: this.now() + CHALLENGE_TTL_MS, used: new Set(),
+      value, expiresAt: this.now() + CHALLENGE_TTL_MS, used: new Set(), pending: new Set(),
     });
     return { value, expiresInSeconds: CHALLENGE_TTL_MS / 1000 };
   }
 
-  /** Uses the challenge for `route`. Returns undefined if missing, expired or already used there. */
-  use(userId, sessionId, route) {
+  /**
+   * Reserves the challenge for `route`. Returns `{ value, commit, release }`,
+   * or undefined if it is missing, expired, already used on that route, or
+   * reserved by a request still in flight. Call `commit()` when Biometry
+   * answered 2xx and `release()` otherwise; after the first of them, both do
+   * nothing.
+   */
+  reserve(userId, sessionId, route) {
     const key = `${userId}\n${sessionId}`;
     const entry = this.challenges.get(key);
     if (!entry) return undefined;
@@ -169,14 +199,47 @@ export class ChallengeStore {
       this.challenges.delete(key);
       return undefined;
     }
-    if (entry.used.has(route)) return undefined;
-    entry.used.add(route);
-    if (CHALLENGE_ROUTES.every((r) => entry.used.has(r))) this.challenges.delete(key);
-    return entry.value;
+    if (entry.used.has(route) || entry.pending.has(route)) return undefined;
+    entry.pending.add(route);
+    let settled = false;
+    return {
+      value: entry.value,
+      commit: () => {
+        if (settled) return;
+        settled = true;
+        entry.pending.delete(route);
+        entry.used.add(route);
+        // Only delete it if a newer challenge has not replaced it meanwhile.
+        if (CHALLENGE_ROUTES.every((r) => entry.used.has(r)) && this.challenges.get(key) === entry) {
+          this.challenges.delete(key);
+        }
+      },
+      release: () => {
+        if (settled) return;
+        settled = true;
+        entry.pending.delete(route);
+      },
+    };
+  }
+
+  /** Reserves and commits at once. Returns the challenge, or undefined like reserve(). */
+  use(userId, sessionId, route) {
+    const reservation = this.reserve(userId, sessionId, route);
+    reservation?.commit();
+    return reservation?.value;
   }
 
   deleteSession(userId, sessionId) {
     this.challenges.delete(`${userId}\n${sessionId}`);
+  }
+
+  /** Drops expired challenges and ended rate-limit windows. createProxy() calls it every minute. */
+  sweep() {
+    const now = this.now();
+    for (const [key, entry] of this.challenges) {
+      if (entry.expiresAt <= now) this.challenges.delete(key);
+    }
+    this.issued.sweep();
   }
 }
 
@@ -282,6 +345,14 @@ export const ROUTES = [
   route('GET', '/api-gateway/v2/consents/my-approvals/:user_id', { body: 'none' }),
 ];
 
+/**
+ * Request headers a cross-origin page may send (CORS preflight). Add your own
+ * auth headers, for example `x-csrf-token`, with createProxy({ allowedHeaders })
+ * or ALLOWED_HEADERS. This only lets the browser send them to this server;
+ * they are not forwarded to Biometry.
+ */
+export const CORS_ALLOWED_HEADERS = ['authorization', 'content-type', 'x-client-app', 'x-client-app-version'];
+
 /** Client request headers passed on to Biometry. The caller's Authorization and cookies are not. */
 const FORWARDED_REQUEST_HEADERS = ['x-client-app', 'x-client-app-version'];
 
@@ -341,7 +412,8 @@ function parseJson(text, what) {
  * Builds a NEW request object from the route's allowed fields. Exact,
  * lower-case key names only, so `USER_ID` or `uſer_id` never get through.
  */
-function rebuildRequestPart(route, clientPart, { userId, sessions, challenges }) {
+function rebuildRequestPart(route, clientPart, ctx) {
+  const { userId, sessions, challenges } = ctx;
   const part = {};
   for (const name of route.fields ?? []) {
     if (!Object.hasOwn(clientPart, name) || clientPart[name] === null) continue;
@@ -354,9 +426,13 @@ function rebuildRequestPart(route, clientPart, { userId, sessions, challenges })
   if (route.challenge) {
     if (part.session_id === undefined) throw new HttpError(400, 'session_id is required for a challenge');
     // Never empty: without a phrase the gateway falls back to form values.
-    const challenge = challenges.use(userId, part.session_id, route.challenge);
-    if (!challenge) throw new HttpError(409, 'no valid liveness challenge for this session: request one from POST /challenge');
-    part.phrase = challenge;
+    // Reserved, not used: the handler commits it only when Biometry answers 2xx.
+    const reservation = challenges.reserve(userId, part.session_id, route.challenge);
+    if (!reservation) {
+      throw new HttpError(409, 'no valid liveness challenge for this session (missing, expired, used, or in use by another request): request one from POST /challenge');
+    }
+    ctx.reservation = reservation;
+    part.phrase = reservation.value;
     part.vocabulary = CHALLENGE_VOCABULARY;
   }
   if (route.setUser) part.user_id = userId;
@@ -434,6 +510,28 @@ function rebuildQuery(route, searchParams) {
   return query ? `?${query}` : '';
 }
 
+/** Returns `value` without trailing `/` characters. No regex, so no backtracking. */
+function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
+}
+
+/**
+ * The caller's IP address. With `trustProxy` 0 it is the socket address.
+ * Behind N proxies or load balancers that each append to `x-forwarded-for`,
+ * set `trustProxy` to N to use the address the outermost one saw. Never set
+ * it without such proxies: clients can write `x-forwarded-for` themselves.
+ */
+export function clientAddress(req, trustProxy = 0) {
+  const socketAddress = req.socket.remoteAddress;
+  const header = req.headers['x-forwarded-for'];
+  if (!trustProxy || typeof header !== 'string') return socketAddress;
+  const hops = header.split(',').map((h) => h.trim()).filter(Boolean);
+  if (!hops.length) return socketAddress;
+  return hops[Math.max(0, hops.length - trustProxy)];
+}
+
 function sendJson(res, status, body, headers = {}) {
   res.writeHead(status, { 'content-type': 'application/json', ...headers });
   res.end(JSON.stringify(body));
@@ -448,20 +546,40 @@ function sendJson(res, status, body, headers = {}) {
  *   Returns the user_id the caller may act as, from YOUR session, or undefined.
  * @param {string} [options.apiUrl] - Where requests go. Defaults to the Biometry API.
  * @param {string} [options.allowedOrigin] - Your web app's origin, for CORS.
+ * @param {string[]} [options.allowedHeaders] - Extra request headers a cross-origin page may
+ *   send (for example your CSRF header), added to CORS_ALLOWED_HEADERS.
+ * @param {number} [options.trustProxy] - How many proxies or load balancers in front of this
+ *   server append to `x-forwarded-for`. 0 (default) uses the socket address. See clientAddress().
  * @param {SessionStore} [options.sessions] - Session ownership. Use shared storage in production.
  * @param {ChallengeStore} [options.challenges] - Liveness challenges. Use shared storage in production.
+ * @param {number} [options.sweepIntervalMs] - How often expired entries are dropped from the
+ *   stores (calls their `sweep()` if they have one). 0 turns it off.
  */
 export function createProxy({
   apiKey,
   authenticate,
   apiUrl = 'https://api.biometrysolutions.com',
   allowedOrigin,
+  allowedHeaders = [],
+  trustProxy = 0,
   sessions = new SessionStore(),
   challenges = new ChallengeStore(),
+  sweepIntervalMs = 60 * 1000,
 }) {
   if (!apiKey) throw new Error('apiKey is required');
   if (typeof authenticate !== 'function') throw new Error('authenticate is required');
-  const upstreamBase = apiUrl.replace(/\/+$/, '');
+  if (!Number.isInteger(trustProxy) || trustProxy < 0) {
+    throw new Error('trustProxy must be a whole number of proxies, 0 or more');
+  }
+  const upstreamBase = trimTrailingSlashes(apiUrl);
+  const corsHeaders = new Set([...CORS_ALLOWED_HEADERS, ...allowedHeaders.map((h) => h.toLowerCase())]);
+
+  /** The preflight's requested headers that are on the allow list, or the whole list. */
+  function corsAllowHeaders(req) {
+    const requested = req.headers['access-control-request-headers'];
+    if (typeof requested !== 'string') return [...corsHeaders].join(', ');
+    return requested.split(',').map((h) => h.trim().toLowerCase()).filter((h) => corsHeaders.has(h)).join(', ');
+  }
 
   async function issueChallenge(req, userId) {
     const raw = await readBody(req);
@@ -484,7 +602,8 @@ export function createProxy({
     }
     const clientHeaders = {};
     if (req.headers['user-agent']) clientHeaders['user-agent'] = req.headers['user-agent'];
-    if (req.socket.remoteAddress) clientHeaders['x-forwarded-for'] = req.socket.remoteAddress;
+    const address = clientAddress(req, trustProxy);
+    if (address) clientHeaders['x-forwarded-for'] = address;
     const failed = await recordConsent({ apiUrl: upstreamBase, apiKey, userId, clientHeaders });
     if (failed) throw new HttpError(502, `consent was not recorded (Biometry answered ${failed.status})`);
     return { consent: 'recorded' };
@@ -492,18 +611,21 @@ export function createProxy({
 
   const OWN_ROUTES = { 'POST /challenge': issueChallenge, 'POST /onboarding/consent': onboardingConsent };
 
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (allowedOrigin) {
       // Credentials allowed, so the page can use cookies (`credentials: 'include'`
       // in the web SDK) or an Authorization header for your own session.
       res.setHeader('access-control-allow-origin', allowedOrigin);
       res.setHeader('access-control-allow-credentials', 'true');
-      res.setHeader('vary', 'Origin');
-      res.setHeader('access-control-allow-headers', 'authorization, content-type, x-client-app, x-client-app-version');
+      res.setHeader('vary', 'Origin, Access-Control-Request-Headers');
+      const allowHeaders = corsAllowHeaders(req);
+      if (allowHeaders) res.setHeader('access-control-allow-headers', allowHeaders);
       res.setHeader('access-control-allow-methods', 'GET, POST');
       if (req.method === 'OPTIONS') return res.writeHead(204).end();
     }
 
+    // Carries the liveness challenge reservation, if this route takes one.
+    const ctx = { userId: undefined, sessions, challenges, reservation: undefined };
     try {
       const url = new URL(req.url, 'http://local');
       const own = OWN_ROUTES[`${req.method} ${url.pathname}`];
@@ -512,6 +634,7 @@ export function createProxy({
 
       const userId = await authenticate(req);
       if (typeof userId !== 'string' || !userId) return sendJson(res, 401, { error: 'sign in first' });
+      ctx.userId = userId;
 
       if (own) return sendJson(res, 200, await own(req, userId));
 
@@ -519,7 +642,7 @@ export function createProxy({
       if (route.startsSession && !sessions.allowStart(userId)) {
         throw new HttpError(429, 'too many sessions, try again later', { 'retry-after': String(RATE_WINDOW_MS / 1000) });
       }
-      const body = await rebuildBody(route, req, { userId, sessions, challenges });
+      const body = await rebuildBody(route, req, ctx);
 
       const headers = { authorization: `Bearer ${apiKey}` };
       if (typeof body === 'string') headers['content-type'] = 'application/json';
@@ -533,6 +656,9 @@ export function createProxy({
         headers,
         body,
       });
+      // Biometry handled it, so the challenge is used. On any other status, or
+      // if fetch threw, the finally block below releases it for a retry.
+      if (upstream.ok) ctx.reservation?.commit();
       const responseBody = Buffer.from(await upstream.arrayBuffer());
 
       if (route.startsSession && upstream.ok) {
@@ -559,8 +685,22 @@ export function createProxy({
       if (err instanceof HttpError) return sendJson(res, err.status, { error: err.message }, err.headers);
       console.error(err);
       sendJson(res, 502, { error: 'upstream error' });
+    } finally {
+      ctx.reservation?.release(); // does nothing once committed
     }
   });
+
+  // The in-memory stores only drop an expired entry when it is read again;
+  // sweep them so users who never come back do not hold memory forever.
+  if (sweepIntervalMs > 0) {
+    const timer = setInterval(() => {
+      sessions.sweep?.();
+      challenges.sweep?.();
+    }, sweepIntervalMs);
+    timer.unref();
+    server.on('close', () => clearInterval(timer));
+  }
+  return server;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -581,6 +721,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     authenticate: demoAuthenticate,
     apiUrl: process.env.BIOMETRY_API_URL,
     allowedOrigin: process.env.ALLOWED_ORIGIN,
+    allowedHeaders: (process.env.ALLOWED_HEADERS ?? '').split(',').map((h) => h.trim()).filter(Boolean),
+    trustProxy: Number(process.env.TRUST_PROXY ?? 0),
   }).listen(port, () => {
     console.log(`Biometry proxy on http://localhost:${port}`);
   });

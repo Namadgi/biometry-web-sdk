@@ -14,7 +14,13 @@ Proxy mode: the SDK can call your own backend instead of the Biometry API, so th
 - Options with neither `apiKey` nor `baseUrl` throw `apiKey or baseUrl is required to initialize the SDK.`
 - `credentials` is passed to `fetch`, for cross-origin proxies that use cookies.
 - `headers` and `credentials` only apply with `baseUrl`. In direct mode they are ignored and the constructor logs one `console.warn`, so direct calls to Biometry carry only the API key.
+- `baseUrl` trailing slashes are trimmed without a regex (no polynomial backtracking on long inputs).
 - `examples/proxy-server`: a zero-dependency Node proxy (with a `node --test` suite) that authenticates the caller, accepts only the SDK's paths, rebuilds every request from an allow list with `user_id` set to the signed-in user, refuses foreign `session_id`s, drops the query string, and adds the API key. It also records consent server-side (`recordConsent()`, `POST /onboarding/consent`, through `PUT /api-gateway/v2/users/{user_id}/consents`) instead of forwarding the SDK's consent calls, and owns the liveness challenge (`POST /challenge` for a session; the stored challenge is written into `phrase` on liveness and voice-verify, each once per session; face-verify needs none). `authenticate` is required (the demo token only runs with `ALLOW_DEMO_AUTH=1`), session ownership expires and is dropped on session end, and session starts and challenges are rate-limited per user.
+- `examples/proxy-server`: a challenge use counts only after Biometry answers 2xx. The route is reserved while the call is in flight (a concurrent double submit gets 409) and released on any other status or a network error, so a retry can reuse the digits. CORS `access-control-allow-headers` is derived from the preflight's requested headers, filtered against an allow list that `allowedHeaders` / `ALLOWED_HEADERS` extends. `trustProxy` / `TRUST_PROXY` picks the client IP from `x-forwarded-for` behind load balancers. A sweep every minute drops expired sessions, challenges and rate-limit windows.
+
+### Requires
+
+- The example proxy needs biometry-api-gateway #147 (phrase optional on v2 face-verify; the proxy sends face-verify without a phrase) and #148 (`PUT /api-gateway/v2/users/{user_id}/consents`) deployed, in that order, before it works end to end. The SDK itself needs neither.
 
 ### Unchanged
 

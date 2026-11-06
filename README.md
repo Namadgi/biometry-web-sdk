@@ -66,6 +66,8 @@ const sdk = new BiometrySDK({
 });
 ```
 
+> **Warning:** do not set `apiKey` together with `baseUrl` in the browser. The SDK then sends your Biometry API key as `Authorization: Bearer <apiKey>` to the `baseUrl` host, so it is in the page and in every request to your proxy.
+
 The SDK keeps the request paths and only swaps the host, so `startSession()` calls `https://your-backend.example.com/biometry/api-gateway/v2/sessions`. Without an `apiKey` it sends no `Authorization` header of its own. Your backend must:
 
 1. Authenticate your user (session cookie, JWT, or the `headers` you pass here).
@@ -78,6 +80,14 @@ The SDK keeps the request paths and only swaps the host, so `startSession()` cal
 - **Consent.** Record the user's authorization and storage consent from your backend with your API key (`PUT /api-gateway/v2/users/{user_id}/consents` with `{"authorization": true, "storage": true}`), for example in your onboarding flow before the first enrollment. The proxy does not forward the SDK's consent calls, so a browser can't record consent for another user.
 - **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge.
 - Your user ids must be 3 to 128 characters of `A-Za-z0-9._:@-`.
+
+The SDK methods still take a `userId` and a `phrase` in proxy mode. Pass your backend's id for the signed-in user as `userId` (the proxy sets `user_id` from your session anyway), and pass the challenge you displayed as `phrase` on `liveness()` and `voiceVerify()`: the proxy overwrites it with its own copy, but the SDK still requires a non-empty value.
+
+```typescript
+await sdk.liveness(video, currentUser.id, displayedChallenge, { sessionId });
+```
+
+The example proxy needs these Biometry API gateway changes deployed, in this order: biometry-api-gateway #147 (makes `phrase` optional on v2 face-verify; the example sends face-verify without one, which the current gateway refuses), then #148 (adds the `PUT /api-gateway/v2/users/{user_id}/consents` endpoint the example records consent through).
 
 If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
 
