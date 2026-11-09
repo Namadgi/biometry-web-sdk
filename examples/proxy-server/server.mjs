@@ -154,6 +154,13 @@ export class SessionStore {
 /** Liveness services that check the spoken challenge. */
 export const CHALLENGE_SERVICES = ['active_speaker_detection', 'visual_speech_recognition'];
 
+/**
+ * Services `/liveness` always runs: the two that check the spoken challenge,
+ * plus face liveness detection (anti-spoofing). Without the last one a client
+ * could ask for a liveness check that never looks for a spoof.
+ */
+export const LIVENESS_REQUIRED_SERVICES = [...CHALLENGE_SERVICES, 'face_liveness_detection'];
+
 /** Routes that consume the challenge. Each may use it once per session. */
 const CHALLENGE_ROUTES = ['liveness', 'voice-verify'];
 
@@ -326,8 +333,8 @@ export const ROUTES = [
   route('POST', '/api-gateway/v2/liveness', {
     body: 'multipart', setUser: true, challenge: 'liveness',
     fields: ['session_id', 'trigger', 'services'], files: { video: 1 },
-    // The services that check the spoken challenge. The client may not skip them.
-    requiredServices: CHALLENGE_SERVICES,
+    // The client may not skip the challenge checks or anti-spoofing.
+    requiredServices: LIVENESS_REQUIRED_SERVICES,
   }),
   route('POST', '/api-gateway/v2/face-verify', {
     body: 'multipart', setUser: true, fields: ['session_id'], files: { video: 1 },
@@ -437,7 +444,7 @@ async function rebuildRequestPart(route, clientPart, ctx) {
     const { include, exclude = [] } = part.services;
     for (const name of route.requiredServices) {
       if (exclude.includes(name) || (include && !include.includes(name))) {
-        throw new HttpError(400, `services may not skip ${name}: it checks the liveness challenge`);
+        throw new HttpError(400, `services may not skip ${name}`);
       }
     }
   }
@@ -560,14 +567,19 @@ export function clientAddress(req, trustProxy = 0) {
  * The scheme the browser used to reach this server: `https:` or `http:`.
  * Without trusted proxies it is the socket's own. Behind a load balancer that
  * terminates TLS (`trustProxy` 1 or more), it is the `x-forwarded-proto` the
- * nearest proxy set; clients can write that header themselves, so it is only
- * read when `trustProxy` says a proxy is there to overwrite it.
+ * proxies set, read the same way as `x-forwarded-for` in `clientAddress`.
+ * Clients can write that header themselves, so it is only read when
+ * `trustProxy` says a proxy is there.
  */
 export function requestScheme(req, trustProxy = 0) {
   const own = req.socket.encrypted ? 'https:' : 'http:';
   const header = req.headers['x-forwarded-proto'];
   if (!trustProxy || typeof header !== 'string') return own;
-  const proto = header.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean).pop();
+  const hops = header.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
+  // Proxies that append: the outermost trusted one wrote the entry trustProxy
+  // places from the end (entries left of it may be client-written). Proxies
+  // that overwrite leave fewer entries; then the nearest one's value stands.
+  const proto = hops.length >= trustProxy ? hops[hops.length - trustProxy] : hops[hops.length - 1];
   return proto === 'https' || proto === 'http' ? `${proto}:` : own;
 }
 
@@ -701,6 +713,7 @@ export function createProxy({
 
     // Carries the liveness challenge reservation, if this route takes one.
     const ctx = { userId: undefined, sessions, challenges, reservation: undefined };
+    let upstreamSignal; // set once the Biometry call starts
     try {
       const url = new URL(req.url, 'http://local');
       const own = OWN_ROUTES[`${req.method} ${url.pathname}`];
@@ -726,17 +739,26 @@ export function createProxy({
         if (req.headers[name]) headers[name] = req.headers[name];
       }
 
+      // Covers reading the response body too.
+      upstreamSignal = AbortSignal.timeout(upstreamTimeoutMs);
       // fetch sets the multipart content-type (with a fresh boundary) for FormData.
       const upstream = await fetch(`${upstreamBase}${path}${rebuildQuery(route, url.searchParams)}`, {
         method: req.method,
         headers,
         body,
-        // Covers reading the response body too.
-        signal: AbortSignal.timeout(upstreamTimeoutMs),
+        signal: upstreamSignal,
       });
       // Biometry handled it, so the challenge is used. On any other status, or
       // if fetch threw, the finally block below releases it for a retry.
-      if (upstream.ok) await ctx.reservation?.commit();
+      if (upstream.ok) {
+        try {
+          await ctx.reservation?.commit();
+        } catch (err) {
+          // Not read below, so free the upstream connection now.
+          await upstream.body?.cancel().catch(() => {});
+          throw err;
+        }
+      }
       const responseBody = Buffer.from(await upstream.arrayBuffer());
 
       if (route.startsSession && upstream.ok) {
@@ -761,7 +783,10 @@ export function createProxy({
       res.end(responseBody);
     } catch (err) {
       if (err instanceof HttpError) return sendJson(res, err.status, { error: err.message }, err.headers);
-      if (err?.name === 'TimeoutError') return sendJson(res, 504, { error: 'upstream timeout' });
+      // Some Node versions report a timeout while reading the body as AbortError.
+      if (err?.name === 'TimeoutError' || (err?.name === 'AbortError' && upstreamSignal?.aborted)) {
+        return sendJson(res, 504, { error: 'upstream timeout' });
+      }
       console.error(err);
       sendJson(res, 502, { error: 'upstream error' });
     } finally {
@@ -776,9 +801,17 @@ export function createProxy({
   // The in-memory stores only drop an expired entry when it is read again;
   // sweep them so users who never come back do not hold memory forever.
   if (sweepIntervalMs > 0) {
+    // A shared store's sweep may be async; a rejection must not crash the proxy.
+    const sweep = (store) => {
+      try {
+        Promise.resolve(store.sweep?.()).catch((err) => console.error(err));
+      } catch (err) {
+        console.error(err);
+      }
+    };
     const timer = setInterval(() => {
-      sessions.sweep?.();
-      challenges.sweep?.();
+      sweep(sessions);
+      sweep(challenges);
     }, sweepIntervalMs);
     timer.unref();
     server.on('close', () => clearInterval(timer));

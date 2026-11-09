@@ -140,7 +140,8 @@ keeps its own copy, bound to the signed-in user **and** that session:
 - at most 10 issued per user per minute (`429` with `Retry-After`).
 
 - on liveness, `services` may not exclude (or leave out of `include`) `active_speaker_detection` or
-  `visual_speech_recognition`, the services that check the spoken challenge (`400`).
+  `visual_speech_recognition`, the services that check the spoken challenge, or
+  `face_liveness_detection`, the anti-spoofing check (`400`).
 
 The store is an in-memory `Map`. In production use shared storage with atomic updates, for
 example a Redis hash per user and session with `EXPIRE 300`: reserve a route with
@@ -204,7 +205,8 @@ createProxy({
 ```
 
 `server.mjs` also exports `ROUTES`, `recordConsent`, `SessionStore`, `ChallengeStore`,
-`generateChallenge`, `clientAddress`, `CORS_ALLOWED_HEADERS`, `CHALLENGE_SERVICES`, `CHALLENGE_LENGTH`,
+`generateChallenge`, `clientAddress`, `requestScheme`, `CORS_ALLOWED_HEADERS`, `CHALLENGE_SERVICES`,
+`LIVENESS_REQUIRED_SERVICES`, `CHALLENGE_LENGTH`,
 `CHALLENGE_DIGITS` and `CHALLENGE_VOCABULARY`.
 
 Before production, keep sessions and challenges in shared storage instead of memory, add rate

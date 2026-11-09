@@ -513,10 +513,12 @@ test('ChallengeStore reserve: commit uses the route, release frees it, both only
   assert.ok(store.reserve('u', 's', 'liveness'));
 });
 
-test('liveness may not skip the services that check the challenge', async () => {
+test('liveness may not skip the challenge checks or face liveness detection', async () => {
   await issueChallenge();
   for (const services of [
     { exclude: ['active_speaker_detection'] },
+    { exclude: ['face_liveness_detection'] },
+    { include: ['active_speaker_detection', 'visual_speech_recognition'] },
     { exclude: ['visual_speech_recognition', 'face_recognition'] },
     { include: ['face_liveness_detection'] },
   ]) {
@@ -528,6 +530,63 @@ test('liveness may not skip the services that check the challenge', async () => 
   const res = await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine', services: ok }, { video: 'v' }));
   assert.equal(res.status, 200);
   assert.deepEqual((await upstreamPart(received[0])).services, ok);
+});
+
+test('a failing store sweep is logged and does not crash the proxy', async () => {
+  const failing = (kind) => ({
+    sweep: kind === 'reject' ? () => Promise.reject(new Error('store down')) : () => { throw new Error('store down'); },
+  });
+  const unhandled = [];
+  const onUnhandled = (err) => unhandled.push(err);
+  process.on('unhandledRejection', onUnhandled);
+  const logged = [];
+  const original = console.error;
+  console.error = (err) => logged.push(err);
+  const p = createProxy({
+    apiKey: 'k', authenticate: () => 'u', sessions: failing('reject'), challenges: failing('throw'), sweepIntervalMs: 5,
+  });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  } finally {
+    p.close();
+    console.error = original;
+    process.off('unhandledRejection', onUnhandled);
+  }
+  assert.equal(unhandled.length, 0);
+  assert.ok(logged.length >= 2, `logged ${logged.length}`);
+  assert.ok(logged.every((err) => err instanceof Error && err.message === 'store down'));
+});
+
+test('a failed challenge commit answers 502 and keeps the challenge usable', async () => {
+  const challenge = await issueChallenge();
+  const broken = new Proxy(challenges, {
+    get: (target, key) => {
+      if (key !== 'reserve') return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+      return (...args) => {
+        const r = target.reserve(...args);
+        return r && { ...r, commit: () => Promise.reject(new Error('store down')), release: r.release };
+      };
+    },
+  });
+  const p = createProxy({
+    apiKey: 'project-key', apiUrl: upstreamUrl, authenticate: (req) => USERS[req.headers.authorization],
+    sessions, challenges: broken, sweepIntervalMs: 0,
+  });
+  const pUrl = await listen(p);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const res = await fetch(`${pUrl}/api-gateway/v2/liveness`, {
+      method: 'POST', headers: APP_AUTH, body: multipart({ session_id: 'sess-mine' }, { video: 'v' }),
+    });
+    assert.equal(res.status, 502);
+  } finally {
+    console.error = original;
+    p.close();
+  }
+  // Not committed, so released for a retry.
+  assert.equal((await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }))).status, 200);
+  assert.equal((await upstreamPart(received.at(-1))).phrase, challenge);
 });
 
 test('a Biometry call that takes too long gives 504 and leaves the challenge usable', async () => {
@@ -704,6 +763,12 @@ test('requestScheme reads x-forwarded-proto only behind a trusted proxy', () => 
   assert.equal(requestScheme(req(false, 'https'), 1), 'https:');
   assert.equal(requestScheme(req(false, 'http, HTTPS'), 1), 'https:');
   assert.equal(requestScheme(req(true, 'http'), 1), 'http:');
+  // Two appending proxies: the outer one saw https, the inner hop was http.
+  assert.equal(requestScheme(req(false, 'https, http'), 2), 'https:');
+  // A client-written entry left of the trusted ones is ignored.
+  assert.equal(requestScheme(req(false, 'http, https, http'), 2), 'https:');
+  // Two proxies that overwrite: one entry, set by the nearest.
+  assert.equal(requestScheme(req(false, 'https'), 2), 'https:');
   // Anything else falls back to the socket.
   assert.equal(requestScheme(req(false, 'ftp'), 1), 'http:');
   assert.equal(requestScheme(req(false), 1), 'http:');
