@@ -557,18 +557,36 @@ export function clientAddress(req, trustProxy = 0) {
 }
 
 /**
- * Browser requests carry `Origin`. Accept only your app's origin
- * (`allowedOrigin`) or this server's own host, so another site cannot make a
- * signed-in user's browser call the proxy with their cookies (a form or
- * `text/plain` POST needs no CORS preflight). Requests without `Origin`
- * (native apps, server-to-server) are allowed.
+ * The scheme the browser used to reach this server: `https:` or `http:`.
+ * Without trusted proxies it is the socket's own. Behind a load balancer that
+ * terminates TLS (`trustProxy` 1 or more), it is the `x-forwarded-proto` the
+ * nearest proxy set; clients can write that header themselves, so it is only
+ * read when `trustProxy` says a proxy is there to overwrite it.
  */
-function originAllowed(req, allowedOrigin) {
+export function requestScheme(req, trustProxy = 0) {
+  const own = req.socket.encrypted ? 'https:' : 'http:';
+  const header = req.headers['x-forwarded-proto'];
+  if (!trustProxy || typeof header !== 'string') return own;
+  const proto = header.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean).pop();
+  return proto === 'https' || proto === 'http' ? `${proto}:` : own;
+}
+
+/**
+ * Browser requests carry `Origin`. Accept only your app's origin
+ * (`allowedOrigin`) or this server's own origin (same scheme and host), so
+ * another site cannot make a signed-in user's browser call the proxy with
+ * their cookies (a form or `text/plain` POST needs no CORS preflight). The
+ * scheme matters: `http://example.com` is a different site from
+ * `https://example.com`, and a plain-http page there must not pass. Requests
+ * without `Origin` (native apps, server-to-server) are allowed.
+ */
+function originAllowed(req, allowedOrigin, trustProxy) {
   const origin = req.headers.origin;
   if (origin === undefined) return true;
   if (allowedOrigin && origin === allowedOrigin) return true;
   try {
-    return new URL(origin).host === req.headers.host;
+    const url = new URL(origin);
+    return url.protocol === requestScheme(req, trustProxy) && url.host === req.headers.host;
   } catch {
     return false; // includes "null"
   }
@@ -688,7 +706,7 @@ export function createProxy({
       const own = OWN_ROUTES[`${req.method} ${url.pathname}`];
       const route = own ? undefined : ROUTES.find((r) => r.method === req.method && r.pattern.test(url.pathname));
       if (!own && !route) return sendJson(res, 404, { error: 'not found' });
-      if (!originAllowed(req, allowedOrigin)) return sendJson(res, 403, { error: 'origin not allowed' });
+      if (!originAllowed(req, allowedOrigin, trustProxy)) return sendJson(res, 403, { error: 'origin not allowed' });
 
       const userId = await authenticate(req);
       if (typeof userId !== 'string' || !userId) return sendJson(res, 401, { error: 'sign in first' });

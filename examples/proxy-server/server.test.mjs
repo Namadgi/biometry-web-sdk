@@ -3,7 +3,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {
-  createProxy, recordConsent, ChallengeStore, SessionStore, generateChallenge, clientAddress,
+  createProxy, recordConsent, ChallengeStore, SessionStore, generateChallenge, clientAddress, requestScheme,
   CHALLENGE_LENGTH, CHALLENGE_DIGITS, CHALLENGE_VOCABULARY,
 } from './server.mjs';
 
@@ -680,6 +680,33 @@ test('browser requests from another origin are refused; the app origin, same hos
   assert.equal(res.status, 200);
   res = await postJson('/onboarding/consent', { accepted: true });
   assert.equal(res.status, 200);
+});
+
+test('a same-host Origin with a different scheme is refused', async () => {
+  // The test proxy is plain http, so an https page on the same host is another site.
+  const host = new URL(proxyUrl).host;
+  let res = await postJson('/onboarding/consent', { accepted: true }, { ...APP_AUTH, origin: `https://${host}` });
+  assert.equal(res.status, 403);
+  // Without trustProxy a client-written x-forwarded-proto changes nothing.
+  res = await postJson('/onboarding/consent', { accepted: true }, {
+    ...APP_AUTH, origin: `https://${host}`, 'x-forwarded-proto': 'https',
+  });
+  assert.equal(res.status, 403);
+  assert.equal(received.length, 0);
+});
+
+test('requestScheme reads x-forwarded-proto only behind a trusted proxy', () => {
+  const req = (encrypted, xfp) => ({ socket: { encrypted }, headers: xfp ? { 'x-forwarded-proto': xfp } : {} });
+  assert.equal(requestScheme(req(false), 0), 'http:');
+  assert.equal(requestScheme(req(true), 0), 'https:');
+  assert.equal(requestScheme(req(false, 'https'), 0), 'http:');
+  // A TLS-terminating load balancer in front: the browser used https.
+  assert.equal(requestScheme(req(false, 'https'), 1), 'https:');
+  assert.equal(requestScheme(req(false, 'http, HTTPS'), 1), 'https:');
+  assert.equal(requestScheme(req(true, 'http'), 1), 'http:');
+  // Anything else falls back to the socket.
+  assert.equal(requestScheme(req(false, 'ftp'), 1), 'http:');
+  assert.equal(requestScheme(req(false), 1), 'http:');
 });
 
 test('the SDK consent calls are not forwarded', async () => {

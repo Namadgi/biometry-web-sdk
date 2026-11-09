@@ -162,11 +162,11 @@ node --test                                                  # tests, no network
 | `PORT` | `3002` | Listen port. |
 | `ALLOWED_ORIGIN` | (unset) | Your web app's exact origin, if it is served from another origin. Enables CORS with credentials, so cookies (`credentials: 'include'`) or an `Authorization` header both work. |
 | `ALLOWED_HEADERS` | (unset) | Comma-separated extra request headers the page may send cross-origin, for example `x-csrf-token`. Added to `authorization, content-type, x-client-app, x-client-app-version`. |
-| `TRUST_PROXY` | `0` | How many proxies or load balancers in front of this server append to `x-forwarded-for`. `0` uses the socket address. |
+| `TRUST_PROXY` | `0` | How many proxies or load balancers in front of this server append to `x-forwarded-for`. `0` uses the socket address. Above `0`, the same-origin check also reads the scheme from `x-forwarded-proto`, which a TLS-terminating load balancer sets. |
 | `UPSTREAM_TIMEOUT_MS` | `120000` | How long a Biometry call may take before the proxy answers `504`. Keep it above your slowest call. |
 
 **Other origins.** Browser requests whose `Origin` is neither `ALLOWED_ORIGIN` nor this server's
-own host get `403`, and `/challenge` and `/onboarding/consent` need
+own origin (same scheme and host, so `http://` does not match an `https://` server) get `403`, and `/challenge` and `/onboarding/consent` need
 `content-type: application/json`. That stops another site from making a signed-in user's browser
 call the proxy with their cookies (a form or `text/plain` POST needs no CORS preflight). Requests
 without `Origin` (native apps, server-to-server) are allowed. If a reverse proxy in front rewrites
