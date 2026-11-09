@@ -557,7 +557,7 @@ test('a failing store sweep is logged and does not crash the proxy', async () =>
   assert.ok(logged.every((err) => err instanceof Error && err.message === 'store down'));
 });
 
-test('a failed challenge commit answers 502 and keeps the challenge usable', async () => {
+test('a failed challenge commit answers 500 and keeps the challenge usable', async () => {
   const challenge = await issueChallenge();
   const broken = new Proxy(challenges, {
     get: (target, key) => {
@@ -579,7 +579,8 @@ test('a failed challenge commit answers 502 and keeps the challenge usable', asy
     const res = await fetch(`${pUrl}/api-gateway/v2/liveness`, {
       method: 'POST', headers: APP_AUTH, body: multipart({ session_id: 'sess-mine' }, { video: 'v' }),
     });
-    assert.equal(res.status, 502);
+    assert.equal(res.status, 500);
+    assert.deepEqual(await res.json(), { error: 'internal error' });
   } finally {
     console.error = original;
     p.close();
@@ -587,6 +588,48 @@ test('a failed challenge commit answers 502 and keeps the challenge usable', asy
   // Not committed, so released for a retry.
   assert.equal((await post('/api-gateway/v2/liveness', multipart({ session_id: 'sess-mine' }, { video: 'v' }))).status, 200);
   assert.equal((await upstreamPart(received.at(-1))).phrase, challenge);
+});
+
+test('an authenticate that throws answers 401, not 502', async () => {
+  const p = createProxy({
+    apiKey: 'project-key', apiUrl: upstreamUrl, sessions, challenges, sweepIntervalMs: 0,
+    authenticate: (req) => {
+      if (req.headers.authorization !== 'Bearer app-token') throw new Error('jwt malformed');
+      return 'user-123';
+    },
+  });
+  const pUrl = await listen(p);
+  const logged = [];
+  const original = console.error;
+  console.error = (err) => logged.push(err);
+  try {
+    let res = await fetch(`${pUrl}/api-gateway/v2/sessions`, { method: 'POST', headers: { authorization: 'Bearer expired' } });
+    assert.equal(res.status, 401);
+    res = await fetch(`${pUrl}/api-gateway/v2/sessions`, { method: 'POST', headers: { authorization: 'Bearer app-token' } });
+    assert.equal(res.status, 200);
+  } finally {
+    console.error = original;
+    p.close();
+  }
+  assert.equal(logged.length, 0);
+});
+
+test('an unreachable Biometry API answers 502', async () => {
+  const p = createProxy({
+    apiKey: 'project-key', apiUrl: 'http://127.0.0.1:1', authenticate: (req) => USERS[req.headers.authorization],
+    sessions, challenges, sweepIntervalMs: 0,
+  });
+  const pUrl = await listen(p);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const res = await fetch(`${pUrl}/api-gateway/v2/sessions`, { method: 'POST', headers: APP_AUTH });
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), { error: 'upstream error' });
+  } finally {
+    console.error = original;
+    p.close();
+  }
 });
 
 test('a Biometry call that takes too long gives 504 and leaves the challenge usable', async () => {

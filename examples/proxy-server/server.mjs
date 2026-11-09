@@ -604,6 +604,14 @@ function originAllowed(req, allowedOrigin, trustProxy) {
   }
 }
 
+const UPSTREAM = Symbol('upstream');
+
+/** Rethrows an error from the Biometry call, marked so it is answered 502. */
+function fromUpstream(err) {
+  if (err !== null && typeof err === 'object') err[UPSTREAM] = true;
+  throw err;
+}
+
 function requireJson(req) {
   const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
   if (type !== 'application/json') throw new HttpError(415, 'content-type must be application/json');
@@ -620,7 +628,8 @@ function sendJson(res, status, body, headers = {}) {
  * @param {object} options
  * @param {string} options.apiKey - Your Biometry project API key.
  * @param {(req: http.IncomingMessage) => string | undefined | Promise<string | undefined>} options.authenticate -
- *   Returns the user_id the caller may act as, from YOUR session, or undefined.
+ *   Returns the user_id the caller may act as, from YOUR session, or undefined. If it throws
+ *   (as most JWT verifiers do on a bad or expired token), the caller gets 401 as well.
  * @param {string} [options.apiUrl] - Where requests go. Defaults to the Biometry API.
  * @param {string} [options.allowedOrigin] - Your web app's origin, for CORS.
  * @param {string[]} [options.allowedHeaders] - Extra request headers a cross-origin page may
@@ -721,7 +730,13 @@ export function createProxy({
       if (!own && !route) return sendJson(res, 404, { error: 'not found' });
       if (!originAllowed(req, allowedOrigin, trustProxy)) return sendJson(res, 403, { error: 'origin not allowed' });
 
-      const userId = await authenticate(req);
+      let userId;
+      try {
+        userId = await authenticate(req);
+      } catch {
+        // A failed check is a refusal, not an outage: the app should ask the user to sign in.
+        userId = undefined;
+      }
       if (typeof userId !== 'string' || !userId) return sendJson(res, 401, { error: 'sign in first' });
       ctx.userId = userId;
 
@@ -747,7 +762,7 @@ export function createProxy({
         headers,
         body,
         signal: upstreamSignal,
-      });
+      }).catch(fromUpstream);
       // Biometry handled it, so the challenge is used. On any other status, or
       // if fetch threw, the finally block below releases it for a retry.
       if (upstream.ok) {
@@ -759,7 +774,7 @@ export function createProxy({
           throw err;
         }
       }
-      const responseBody = Buffer.from(await upstream.arrayBuffer());
+      const responseBody = Buffer.from(await upstream.arrayBuffer().catch(fromUpstream));
 
       if (route.startsSession && upstream.ok) {
         let sessionId;
@@ -788,7 +803,9 @@ export function createProxy({
         return sendJson(res, 504, { error: 'upstream timeout' });
       }
       console.error(err);
-      sendJson(res, 502, { error: 'upstream error' });
+      // 502 only when the Biometry call failed; a failing store or bug is ours.
+      if (err?.[UPSTREAM]) sendJson(res, 502, { error: 'upstream error' });
+      else sendJson(res, 500, { error: 'internal error' });
     } finally {
       try {
         await ctx.reservation?.release(); // does nothing once committed

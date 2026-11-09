@@ -200,7 +200,7 @@ import { createProxy } from './server.mjs';
 
 createProxy({
   apiKey: process.env.BIOMETRY_API_KEY,
-  authenticate: (req) => yourSessionUserId(req), // user_id or undefined
+  authenticate: (req) => yourSessionUserId(req), // user_id or undefined (a throw also means 401)
 }).listen(3002);
 ```
 
