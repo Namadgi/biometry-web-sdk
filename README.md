@@ -66,22 +66,62 @@ const sdk = new BiometrySDK({
 });
 ```
 
-The SDK keeps the request paths and only swaps the host, so `startSession()` calls `https://your-backend.example.com/biometry/api-gateway/v2/sessions`. Without an `apiKey` it sends no `Authorization` header of its own. Your backend must:
+> **Warning:** do not set `apiKey` together with `baseUrl` in the browser. The SDK then sends your Biometry API key as `Authorization: Bearer <apiKey>` to the `baseUrl` host, so it is in the page and in every request to your proxy.
+
+In proxy mode each call goes to `baseUrl` plus its own short path: the API v2 path without Biometry's `/api-gateway/v2` prefix. So `startSession()` calls `https://your-backend.example.com/biometry/sessions`, and your backend can name its routes as it likes. Without an `apiKey` the SDK sends no `Authorization` header of its own.
+
+| SDK method | `paths` key | Default proxy path |
+|------------|-------------|--------------------|
+| `startSession()` | `startSession` | `POST /sessions` (the SDK adds `?warmup=true` when asked) |
+| `endSession()` | `endSession` | `POST /sessions/{session_id}/end` |
+| `liveness()` | `liveness` | `POST /liveness` |
+| `faceVerify()` | `faceVerify` | `POST /face-verify` |
+| `voiceVerify()` | `voiceVerify` | `POST /voice-verify` |
+| `matchFaces()` | `faceMatch` | `POST /face-match` |
+| `enrollFace()` | `enrollFace` | `POST /enrollments/face` |
+| `enrollVoice()` | `enrollVoice` | `POST /enrollments/voice` |
+| `checkDocAuth()` | `checkDocument` | `POST /documents/check` |
+
+The defaults are exported as `DEFAULT_PROXY_PATHS` (keys typed as `ProxyOperation`). To use other routes, override single calls with `paths`:
+
+```typescript
+const sdk = new BiometrySDK({
+  baseUrl: 'https://your-backend.example.com',
+  paths: {
+    liveness: '/kyc/liveness-check',
+    endSession: '/kyc/sessions/{session_id}/finish',
+  },
+});
+```
+
+Each override must start with `/`, contain no `?` or `#`, and contain exactly the placeholders of the default path (`{session_id}` for `endSession`, none for the others). Placeholder values are URI-encoded. An unknown key or an invalid path throws in the constructor. `paths` only applies in proxy mode: without `baseUrl` it is ignored, with a `console.warn`.
+
+`giveAuthorizationConsent()` and `giveStorageConsent()` throw in proxy mode: your backend records consent itself (see below).
+
+Your backend must:
 
 1. Authenticate your user (session cookie, JWT, or the `headers` you pass here).
-2. Accept only the `/api-gateway/v2/...` paths your app uses.
-3. Never pass the client's body through. Rebuild each request from the fields and files that call needs, **set** `user_id` to the signed-in user (do not just compare it: the gateway's JSON decoder matches keys case-insensitively, so `USER_ID` or a duplicate key can slip past a check), keep a `session_id` only if it was started for that user, and drop the query string (except `warmup=true` on session start).
-4. Send the rebuilt request to `https://api.biometrysolutions.com` with the same path, adding `Authorization: Bearer <your API key>`.
+2. Accept only the paths your app uses.
+3. Never pass the client's body through. Rebuild each request from the fields and files that call needs, **set** `user_id` to the signed-in user (do not just compare it: the gateway's JSON decoder matches keys case-insensitively, so `USER_ID` or a duplicate key can slip past a check), keep a `session_id` only if it was started for that user, and drop the query string (except `warmup=true` on session start). The same goes for IDs in the path: answer `403` unless a `{user_id}` is the signed-in user and a `{session_id}` was started for that user, so nobody can end another user's session or read their consent approvals.
+4. Send the rebuilt request to the matching Biometry endpoint, `https://api.biometrysolutions.com/api-gateway/v2` plus the default path (for example `POST /liveness` goes to `/api-gateway/v2/liveness`), adding `Authorization: Bearer <your API key>`.
 
 [`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite. It also shows the two jobs your backend must do itself in proxy mode:
 
-- **Consent.** Record the user's authorization and storage consent from your backend with your API key (`PUT /api-gateway/v2/users/{user_id}/consents` with `{"authorization": true, "storage": true}`), for example in your onboarding flow before the first enrollment. The proxy does not forward the SDK's consent calls, so a browser can't record consent for another user.
+- **Consent.** Record the user's authorization and storage consent from your backend with your API key (`PUT /api-gateway/v2/users/{user_id}/consents` with `{"authorization": true, "storage": true}`), for example in your onboarding flow before the first enrollment. The SDK's consent methods throw in proxy mode, so a browser can't record consent for another user; call your own backend instead (the example proxy has `POST /onboarding/consent`).
 - **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge.
 - Your user ids must be 3 to 128 characters of `A-Za-z0-9._:@-`.
 
+The SDK methods still take a `userId` and a `phrase` in proxy mode. Pass your backend's id for the signed-in user as `userId` (the proxy sets `user_id` from your session anyway), and pass the challenge you displayed as `phrase` on `liveness()` and `voiceVerify()`: the proxy overwrites it with its own copy, but the SDK still requires a non-empty value.
+
+```typescript
+await sdk.liveness(video, currentUser.id, displayedChallenge, { sessionId });
+```
+
+The example proxy needs these Biometry API gateway changes deployed, in this order: biometry-api-gateway #147 (makes `phrase` optional on v2 face-verify; the example sends face-verify without one, which the current gateway refuses), then #148 (adds the `PUT /api-gateway/v2/users/{user_id}/consents` endpoint the example records consent through).
+
 If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
 
-`baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` in it; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively. `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
+`baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` in it; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively, except `Content-Type`, which the SDK sets from the body (JSON, or multipart with its boundary). `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
 
 #### Direct mode (server-side or testing)
 
@@ -137,7 +177,7 @@ const session = await sdk.startSession();
 const sessionId = session.body.data.session_id;
 
 // Pass sessionId to subsequent calls to link them together
-await sdk.faceVerify(videoFile, 'user-123', '12345678', { sessionId });
+await sdk.faceVerify(videoFile, 'user-123', undefined, { sessionId });
 
 // End the session (optionally with a phone number for a SIM-swap check)
 await sdk.endSession(sessionId, { phoneNumber: '+15551234567' });
@@ -149,7 +189,7 @@ Pass `{ warmup: true }` to `startSession` to pre-warm the ML services in the bac
 
 Consent must be collected **before** performing biometric operations. It is served by the consent service; despite the parameter name `userFullName`, pass your `user_id`, not the person's name.
 
-> **Proxy mode:** record consent from your backend instead (see [Proxy mode](#proxy-mode-browser-recommended)); the example proxy does not forward these calls. The `/v2/consents` endpoints are a different feature (your own custom consent documents) and do not unlock enrollment.
+> **Proxy mode:** record consent from your backend instead (see [Proxy mode](#proxy-mode-browser-recommended)); with `baseUrl` set these methods throw. The `/v2/consents` endpoints are a different feature (your own custom consent documents) and do not unlock enrollment.
 
 | Type | Required before | Method |
 |------|----------------|--------|
@@ -215,7 +255,8 @@ console.log(response.body.data.face_liveness_detection);
 **Face verification** — verify the face in a video/image against the user's enrolled face:
 
 ```typescript
-const response = await sdk.faceVerify(videoFile, 'user-123', '12345678', { sessionId });
+// No phrase needed: pass undefined to give props.
+const response = await sdk.faceVerify(videoFile, 'user-123', undefined, { sessionId });
 console.log(response.body.data.face_recognition);
 ```
 
@@ -331,8 +372,9 @@ Creates a new SDK instance. Passing a string is the same as `{ apiKey }`.
 | Option | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `apiKey` | `string` | Unless `baseUrl` is set | Your Biometry project API key, sent as `Authorization: Bearer <apiKey>`. Leave it out in proxy mode. |
-| `baseUrl` | `string` | No | Replaces `https://api.biometrysolutions.com`; request paths are kept. Point it at your backend proxy. |
-| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Proxy mode only. Extra headers sent on every request. They replace an SDK header with the same name (case-insensitively), including `Authorization`. Ignored with a warning without `baseUrl`. |
+| `baseUrl` | `string` | No | Your backend proxy. Calls go to `baseUrl` plus their proxy path (`DEFAULT_PROXY_PATHS`, the v2 path without `/api-gateway/v2`). |
+| `paths` | `Partial<Record<ProxyOperation, string>>` | No | Proxy mode only. Overrides the proxy path of single calls. Must start with `/`, no `?` or `#`, same placeholders as the default; invalid entries or unknown keys throw. Ignored with a warning without `baseUrl`. |
+| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Proxy mode only. Extra headers sent on every request. They replace an SDK header with the same name (case-insensitively), including `Authorization`. A custom `Content-Type` is dropped: the SDK sets it from the body. Ignored with a warning without `baseUrl`. |
 | `credentials` | `RequestCredentials` | No | Proxy mode only. Passed to `fetch`. Use `'include'` for a cross-origin proxy that authenticates with cookies. Ignored with a warning without `baseUrl`. |
 
 ---
@@ -364,12 +406,12 @@ Ends a session. Optionally runs a SIM-swap fraud check.
 
 ### `giveAuthorizationConsent(isConsentGiven, userFullName, props?)` / `giveStorageConsent(isStorageConsentGiven, userFullName, props?)`
 
-Submit authorization / storage consent (served by the consent service).
+Submit authorization / storage consent (served by the consent service). Direct mode only: with `baseUrl` (proxy mode) they throw, because your backend records consent.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `isConsentGiven` / `isStorageConsentGiven` | `boolean` | Yes | Whether the user granted consent |
-| `userFullName` | `string` | Yes | User's full name |
+| `userFullName` | `string` | Yes | Your `user_id` for the user (not the person's name); sent as `user_fullname` |
 | `props.sessionId` | `string` | No | Session ID to link with |
 | `props.deviceInfo` | `object` | No | Device metadata |
 
@@ -418,13 +460,13 @@ Submit authorization / storage consent (served by the consent service).
 
 ---
 
-### `faceVerify(video, userId, phrase, props?)` / `voiceVerify(voice, userId, phrase, props?)`
+### `faceVerify(video, userId, phrase?, props?)` / `voiceVerify(voice, userId, phrase, props?)`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `video` / `voice` | `File` | Yes | Video (face) or audio/video (voice) file |
 | `userId` | `string` | Yes | Opaque identity key for the user |
-| `phrase` | `string` | Yes | Digits/words the user speaks |
+| `phrase` | `string` | `voiceVerify`: Yes. `faceVerify`: No | Digits/words the user speaks. The API no longer needs it for `faceVerify`; it is sent only when non-empty. Pass `undefined` to skip it and still give `props` |
 | `props.sessionId` | `string` | No | Session ID for combined scoring |
 | `props.vocabulary` | `string` | No | Vocabulary hint (e.g. `'en_digits'`) |
 
