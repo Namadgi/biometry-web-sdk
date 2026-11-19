@@ -21,9 +21,12 @@ Proxy mode: the SDK can call your own backend instead of the Biometry API, so th
 - `examples/proxy-server`: a challenge use counts only after Biometry answers 2xx. The route is reserved while the call is in flight (a concurrent double submit gets 409) and released on any other status or a network error, so a retry can reuse the digits. CORS `access-control-allow-headers` is derived from the preflight's requested headers, filtered against an allow list that `allowedHeaders` / `ALLOWED_HEADERS` extends. `trustProxy` / `TRUST_PROXY` picks the client IP from `x-forwarded-for` behind load balancers. A sweep every minute drops expired sessions, challenges and rate-limit windows.
 - `examples/proxy-server` review fixes: Biometry calls time out after `upstreamTimeoutMs` (default 120 s, `504`); `/challenge` and `/onboarding/consent` need `content-type: application/json`, and browser requests from an origin other than `allowedOrigin` or the proxy's own host get `403`, so another site cannot use a signed-in user's cookies; liveness requests may not exclude `active_speaker_detection` or `visual_speech_recognition` (the challenge checks); store methods may return Promises; `trustProxy` falls back to the socket address when `x-forwarded-for` has fewer entries than trusted proxies or the entry is not an IP; consent response bodies are released; Node 18.8 or newer.
 
+- `faceVerify` and `voiceVerify` take `props.useSessionVideo`: with a `sessionId`, the gateway reuses the video the session's liveness check stored, and the file argument may be `null` (it is not sent). In a session, face and voice must use the liveness media (the same file or `useSessionVideo`); other media gets `400 media_mismatch` once the gateway enforces media binding (BM-535).
+- `examples/proxy-server`: face-verify and voice-verify accept `use_session_video`. The README notes that a failed liveness check still answers `200` and so uses up the challenge; issue a new one to retry.
+
 ### Changed
 
-- `faceVerify` phrase is optional; the API no longer needs it. The signature is now `faceVerify(video, userId, phrase?, props?)`, so existing calls that pass a phrase still work. The phrase goes into the request only when it is a non-empty string; pass `undefined` to skip it and still give `props`. Video and user ID are still required.
+- `faceVerify` phrase is optional; the API no longer needs it. The signature is now `faceVerify(video, userId, phrase?, props?)`, so existing calls that pass a phrase still work. The phrase goes into the request only when it is a non-empty string; pass `undefined` to skip it and still give `props`. User ID is still required, and a video unless `useSessionVideo` is set.
 
 ### Requires
 

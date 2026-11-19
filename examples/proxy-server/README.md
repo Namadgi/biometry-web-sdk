@@ -156,11 +156,17 @@ keeps its own copy, bound to the signed-in user **and** that session:
   nothing is sent to Biometry. Both calls must send the `session_id`;
 - a use only counts once Biometry answers `2xx`. The route is reserved while the call is in
   flight, so a concurrent double submit gets `409`, and released if Biometry answers anything
-  else or cannot be reached, so the user can retry with the same digits;
+  else or cannot be reached, so the user can retry with the same digits. A liveness check that
+  **fails** still answers `200` (the failure is in `decision`), so it uses up the challenge: to
+  retry, call `POST /challenge` again for the session, which replaces it;
 - on those calls the proxy writes the challenge into `request.phrase` and pins `vocabulary` to
   `en_digits`, ignoring whatever the device sent;
 - **face-verify** needs no challenge: the gateway runs face recognition only there, which
   ignores the phrase, so the proxy sends none (needs gateway #147, see above);
+- face-verify and voice-verify accept `use_session_video` (with `session_id` and no file), so the
+  app can reuse the liveness video. In a session the gateway counts face and voice results only
+  from the liveness media and, once it enforces media binding, refuses other media with
+  `400 media_mismatch`; send the liveness video again or set `use_session_video`;
 - at most 10 issued per user per minute (`429` with `Retry-After`).
 
 - on liveness, `services` may not exclude (or leave out of `include`) `active_speaker_detection` or
