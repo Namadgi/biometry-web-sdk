@@ -49,15 +49,52 @@ npm install biometry-sdk
 
 ### Initialization
 
+There are two ways to run the SDK. In the browser, use **proxy mode** so your API key never ships in the page.
+
+#### Proxy mode (browser, recommended)
+
+Your API key is project-wide and long-lived, and anything in a web bundle can be read by anyone who opens devtools. Keep the key on your backend and point the SDK at it with `baseUrl`:
+
 ```typescript
 import { BiometrySDK } from 'biometry-sdk';
 
-const sdk = new BiometrySDK('YOUR_API_KEY');
+const sdk = new BiometrySDK({
+  baseUrl: 'https://your-backend.example.com/biometry',
+  // Optional: your own app's credentials for the proxy. A function is called
+  // before every request, so a refreshed token is picked up.
+  headers: () => ({ Authorization: `Bearer ${getAppSessionToken()}` }),
+});
 ```
 
-The API key is used as a Bearer token for all requests to the Biometry API. An error is thrown if the key is empty.
+The SDK keeps the request paths and only swaps the host, so `startSession()` calls `https://your-backend.example.com/biometry/api-gateway/v2/sessions`. Without an `apiKey` it sends no `Authorization` header of its own. Your backend must:
 
-> **Security:** Never hardcode API keys in client-side code shipped to production. Use environment variables or a server-side proxy to keep your key private.
+1. Authenticate your user (session cookie, JWT, or the `headers` you pass here).
+2. Accept only the `/api-gateway/v2/...` paths your app uses.
+3. Never pass the client's body through. Rebuild each request from the fields and files that call needs, **set** `user_id` to the signed-in user (do not just compare it: the gateway's JSON decoder matches keys case-insensitively, so `USER_ID` or a duplicate key can slip past a check), keep a `session_id` only if it was started for that user, and drop the query string (except `warmup=true` on session start).
+4. Send the rebuilt request to `https://api.biometrysolutions.com` with the same path, adding `Authorization: Bearer <your API key>`.
+
+[`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite. It also shows the two jobs your backend must do itself in proxy mode:
+
+- **Consent.** Record the user's authorization and storage consent from your backend with your API key (`/api-consent/consent` and `/api-consent/strg-consent`, with your `user_id` as `user_fullname`), for example in your onboarding flow before the first enrollment. The proxy does not forward `giveAuthorizationConsent` / `giveStorageConsent`, so a browser can't record consent for another user.
+- **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge.
+- Your user ids must be at least 3 characters: the consent service requires it.
+
+If the proxy is on another origin and authenticates with cookies, pass `credentials: 'include'`; the proxy must then answer CORS with your page's exact origin and `Access-Control-Allow-Credentials: true`.
+
+`baseUrl` must be an absolute `http` or `https` URL with no `?` or `#` in it; anything else throws. `headers` replace SDK headers with the same name, compared case-insensitively. `headers` and `credentials` only apply in proxy mode: without `baseUrl` they are ignored, with a `console.warn`.
+
+#### Direct mode (server-side or testing)
+
+On your own server (Node 18+), or for quick tests, pass the API key and the SDK calls the Biometry API directly:
+
+```typescript
+const sdk = new BiometrySDK('YOUR_API_KEY');
+// same as: new BiometrySDK({ apiKey: 'YOUR_API_KEY' })
+```
+
+The API key is sent as a Bearer token on every request. `new BiometrySDK('')` throws `API Key is required to initialize the SDK.`; options with neither `apiKey` nor `baseUrl` throw `apiKey or baseUrl is required to initialize the SDK.`
+
+> **Security:** Never put your API key in client-side code shipped to production. Use proxy mode in the browser.
 
 ## Response Structure
 
@@ -110,7 +147,9 @@ Pass `{ warmup: true }` to `startSession` to pre-warm the ML services in the bac
 
 ### Consent
 
-Consent must be collected **before** performing biometric operations. It is served by the consent service and still identifies the user by full name.
+Consent must be collected **before** performing biometric operations. It is served by the consent service; despite the parameter name `userFullName`, pass your `user_id`, not the person's name.
+
+> **Proxy mode:** record consent from your backend instead (see [Proxy mode](#proxy-mode-browser-recommended)); the example proxy does not forward these calls. The `/v2/consents` endpoints are a different feature (your own custom consent documents) and do not unlock enrollment.
 
 | Type | Required before | Method |
 |------|----------------|--------|
@@ -118,8 +157,8 @@ Consent must be collected **before** performing biometric operations. It is serv
 | **Storage** | Face/voice enrollment | `giveStorageConsent()` |
 
 ```typescript
-await sdk.giveAuthorizationConsent(true, 'Jane Doe');
-await sdk.giveStorageConsent(true, 'Jane Doe');
+await sdk.giveAuthorizationConsent(true, 'user-123');
+await sdk.giveStorageConsent(true, 'user-123');
 ```
 
 Both accept optional `sessionId` and `deviceInfo`.
@@ -249,8 +288,8 @@ const sessionId = session.body.data.session_id;
 const userId = 'user-123';
 
 // 1. Collect consent
-await sdk.giveStorageConsent(true, 'Jane Doe', { sessionId });
-await sdk.giveAuthorizationConsent(true, 'Jane Doe', { sessionId });
+await sdk.giveStorageConsent(true, userId, { sessionId });
+await sdk.giveAuthorizationConsent(true, userId, { sessionId });
 
 // 2. Liveness check on the live capture
 const liveVideo = new File([videoBytes], 'video.mp4', { type: 'video/mp4' });
@@ -285,13 +324,16 @@ console.log(`Document: ${doc.document_number}`);
 
 ## API Reference
 
-### `new BiometrySDK(apiKey)`
+### `new BiometrySDK(apiKey)` / `new BiometrySDK(options)`
 
-Creates a new SDK instance.
+Creates a new SDK instance. Passing a string is the same as `{ apiKey }`.
 
-| Parameter | Type | Required | Description |
+| Option | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `apiKey` | `string` | Yes | Your Biometry project API key |
+| `apiKey` | `string` | Unless `baseUrl` is set | Your Biometry project API key, sent as `Authorization: Bearer <apiKey>`. Leave it out in proxy mode. |
+| `baseUrl` | `string` | No | Replaces `https://api.biometrysolutions.com`; request paths are kept. Point it at your backend proxy. |
+| `headers` | `Record<string, string>` or `() => Record<string, string> \| Promise<Record<string, string>>` | No | Proxy mode only. Extra headers sent on every request. They replace an SDK header with the same name (case-insensitively), including `Authorization`. Ignored with a warning without `baseUrl`. |
+| `credentials` | `RequestCredentials` | No | Proxy mode only. Passed to `fetch`. Use `'include'` for a cross-origin proxy that authenticates with cookies. Ignored with a warning without `baseUrl`. |
 
 ---
 
@@ -449,7 +491,7 @@ Common error scenarios:
 
 | Scenario | When it happens |
 |----------|-----------------|
-| Missing API key | `new BiometrySDK('')` |
+| Missing API key | `new BiometrySDK('')`, or options with neither `apiKey` nor `baseUrl` |
 | Missing required parameter | e.g. calling `enrollFace` without a file or `userId` |
 | No face detected | Verifying/enrolling with an image that has no detectable face |
 | Liveness check failed | A spoofing attempt is detected |
@@ -459,7 +501,7 @@ Common error scenarios:
 
 ## Security & Privacy
 
-1. **Protect your API key** — use environment variables or a server-side proxy. Never commit keys to source control.
+1. **Protect your API key** — keep it on your backend and use [proxy mode](#proxy-mode-browser-recommended) in the browser. Never commit keys to source control.
 2. **Obtain explicit consent** — always collect authorization and storage consent through your UI before calling biometric APIs.
 3. **Data minimization** — only collect and store data that is necessary for your use case.
 4. **Regulatory compliance** — check local regulations (GDPR, CCPA, etc.) regarding biometric data.
