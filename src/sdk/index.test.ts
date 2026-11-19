@@ -1,4 +1,4 @@
-import { BiometrySDK, BiometryApiError } from '.';
+import { BiometrySDK, BiometryApiError, DEFAULT_PROXY_PATHS } from '.';
 
 // Mock the fetch API globally
 global.fetch = jest.fn();
@@ -301,6 +301,38 @@ describe('BiometrySDK', () => {
     expect(fetch).toHaveBeenCalledWith(`${V2}/face-verify`, expect.objectContaining({ method: 'POST' }));
   });
 
+  it('should call face-verify without a phrase field when no phrase is given', async () => {
+    mockOk({ data: { face_recognition: {} }, meta: {} });
+    const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
+    const formDataSpy = jest.spyOn(FormData.prototype, 'append');
+    await sdk.faceVerify(videoFile, 'user-1', undefined, { sessionId: 'sess-1' });
+
+    const part = requestPartFrom(formDataSpy);
+    expect(part).toEqual({ user_id: 'user-1', session_id: 'sess-1' });
+    expect(part).not.toHaveProperty('phrase');
+    expect(formDataSpy).toHaveBeenCalledWith('video', videoFile);
+  });
+
+  it('should call face-verify with only video and user id, and treat an empty phrase as absent', async () => {
+    const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
+    const formDataSpy = jest.spyOn(FormData.prototype, 'append');
+
+    mockOk({ data: { face_recognition: {} }, meta: {} });
+    await sdk.faceVerify(videoFile, 'user-1');
+    expect(requestPartFrom(formDataSpy)).toEqual({ user_id: 'user-1' });
+
+    formDataSpy.mockClear();
+    mockOk({ data: { face_recognition: {} }, meta: {} });
+    await sdk.faceVerify(videoFile, 'user-1', '');
+    expect(requestPartFrom(formDataSpy)).toEqual({ user_id: 'user-1' });
+  });
+
+  it('should still require video and user id for face-verify', async () => {
+    const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
+    await expect(sdk.faceVerify(undefined as unknown as File, 'user-1')).rejects.toThrow('Video is required.');
+    await expect(sdk.faceVerify(videoFile, '')).rejects.toThrow('User ID is required.');
+  });
+
   it('should call voice-verify with the voice part', async () => {
     mockOk({ data: { voice_recognition: {} }, meta: {} });
     const voiceFile = new File(['voice data'], 'voice.wav', { type: 'audio/wav' });
@@ -367,7 +399,7 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     const sdk = new BiometrySDK({ baseUrl: 'http://localhost:3002' });
     mockOk({ data: { session_id: 's' }, meta: {} });
     await sdk.startSession();
-    expect(fetch).toHaveBeenCalledWith('http://localhost:3002/api-gateway/v2/sessions', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3002/sessions', expect.any(Object));
   });
 
   it('accepts the options form with only an apiKey and keeps direct-mode behaviour', async () => {
@@ -387,7 +419,7 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     mockOk({ data: { session_id: 's' }, meta: {} });
     await sdk.startSession({ warmup: true });
 
-    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions?warmup=true`, expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/sessions?warmup=true`, expect.any(Object));
     const headers = lastInit().headers as Record<string, string>;
     expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain('authorization');
     expect(lastInit()).not.toHaveProperty('credentials');
@@ -397,20 +429,141 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     const sdk = new BiometrySDK({ baseUrl: `${PROXY}//` });
     mockOk({ meta: {} });
     await sdk.endSession('sess-1');
-    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions/sess-1/end`, expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/sessions/sess-1/end`, expect.any(Object));
   });
 
-  it('routes multipart and consent calls through baseUrl with the same path', async () => {
+  it('trims a long run of slashes quickly and keeps inner slashes', async () => {
+    const slashes = '/'.repeat(100_000);
+    const started = Date.now();
+    const sdk = new BiometrySDK({ baseUrl: `${PROXY}/a${slashes}b${slashes}` });
+    expect(Date.now() - started).toBeLessThan(1000);
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/a${slashes}b/sessions/sess-1/end`, expect.any(Object));
+  });
+
+  it('sends every call to its default proxy path, without the /api-gateway/v2 prefix', async () => {
     const sdk = new BiometrySDK({ baseUrl: PROXY });
-    const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
+    const file = (name: string) => new File(['x'], name, { type: 'application/octet-stream' });
+    const calls: Array<[() => Promise<unknown>, string]> = [
+      [() => sdk.startSession(), '/sessions'],
+      [() => sdk.endSession('sess-1'), '/sessions/sess-1/end'],
+      [() => sdk.liveness(file('v.mp4'), 'user-1', 'one two'), '/liveness'],
+      [() => sdk.faceVerify(file('v.mp4'), 'user-1', 'one two'), '/face-verify'],
+      [() => sdk.voiceVerify(file('a.wav'), 'user-1', 'one two'), '/voice-verify'],
+      [() => sdk.matchFaces(file('r.jpg'), 'user-1', { video: file('v.mp4') }), '/face-match'],
+      [() => sdk.enrollFace(file('f.jpg'), 'user-1'), '/enrollments/face'],
+      [() => sdk.enrollVoice(file('a.wav'), 'user-1', 'one two'), '/enrollments/voice'],
+      [() => sdk.checkDocAuth(file('d.jpg')), '/documents/check'],
+    ];
+    for (const [call, path] of calls) {
+      mockOk({ data: {}, meta: {} });
+      await call();
+      expect(fetch).toHaveBeenLastCalledWith(`${PROXY}${path}`, expect.objectContaining({ method: 'POST' }));
+    }
+  });
+
+  it('exports the default proxy paths', () => {
+    expect(DEFAULT_PROXY_PATHS).toEqual({
+      startSession: '/sessions',
+      endSession: '/sessions/{session_id}/end',
+      liveness: '/liveness',
+      faceVerify: '/face-verify',
+      voiceVerify: '/voice-verify',
+      faceMatch: '/face-match',
+      enrollFace: '/enrollments/face',
+      enrollVoice: '/enrollments/voice',
+      checkDocument: '/documents/check',
+    });
+    expect(Object.isFrozen(DEFAULT_PROXY_PATHS)).toBe(true);
+  });
+
+  it('uses path overrides, fills placeholders URI-encoded, and keeps the other defaults', async () => {
+    const sdk = new BiometrySDK({
+      baseUrl: PROXY,
+      paths: { endSession: '/my-sessions/{session_id}/finish', liveness: '/checks/liveness', startSession: '/my-sessions' },
+    });
+
+    mockOk({ meta: {} });
+    await sdk.endSession('a/b c');
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/my-sessions/a%2Fb%20c/finish`, expect.any(Object));
 
     mockOk({ data: {}, meta: {} });
-    await sdk.liveness(videoFile, 'user-1', 'one two');
-    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/liveness`, expect.objectContaining({ method: 'POST' }));
+    await sdk.liveness(new File(['v'], 'v.mp4', { type: 'video/mp4' }), 'user-1', 'one two');
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/checks/liveness`, expect.any(Object));
 
-    mockOk({ is_consent_given: true });
-    await sdk.giveAuthorizationConsent(true, 'Jane Doe');
-    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-consent/consent`, expect.any(Object));
+    mockOk({ data: { session_id: 's' }, meta: {} });
+    await sdk.startSession({ warmup: true });
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/my-sessions?warmup=true`, expect.any(Object));
+
+    mockOk({ data: {}, meta: {} });
+    await sdk.faceVerify(new File(['v'], 'v.mp4', { type: 'video/mp4' }), 'user-1', 'one two');
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/face-verify`, expect.any(Object));
+  });
+
+  it('sends face-verify without a phrase in proxy mode', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY });
+    const formDataSpy = jest.spyOn(FormData.prototype, 'append');
+    mockOk({ data: {}, meta: {} });
+    await sdk.faceVerify(new File(['v'], 'v.mp4', { type: 'video/mp4' }), 'user-1', undefined, { sessionId: 'sess-1' });
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/face-verify`, expect.objectContaining({ method: 'POST' }));
+    expect(requestPartFrom(formDataSpy)).toEqual({ user_id: 'user-1', session_id: 'sess-1' });
+  });
+
+  it('URI-encodes the session id in the default endSession path', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY });
+    mockOk({ meta: {} });
+    await sdk.endSession('../x?y');
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/sessions/..%2Fx%3Fy/end`, expect.any(Object));
+  });
+
+  it.each([
+    [{ liveness: 'liveness' }, /paths\.liveness must be a string that starts with "\/"/],
+    [{ liveness: '' }, /paths\.liveness must be a string that starts with "\/"/],
+    [{ liveness: 42 }, /paths\.liveness must be a string that starts with "\/"/],
+    [{ liveness: '/liveness?x=1' }, /paths\.liveness must not contain "\?" or "#"/],
+    [{ liveness: '/liveness#x' }, /paths\.liveness must not contain "\?" or "#"/],
+    [{ endSession: '/sessions/end' }, /paths\.endSession must contain exactly \{session_id\} once each/],
+    [{ endSession: '/sessions/{id}/end' }, /paths\.endSession must contain exactly \{session_id\} once each/],
+    [{ endSession: '/s/{session_id}/{session_id}' }, /paths\.endSession must contain exactly \{session_id\} once each/],
+    [{ endSession: '/s/{session_id}/{user_id}' }, /paths\.endSession must contain exactly \{session_id\} once each/],
+    [{ endSession: '/s/{session_id/end' }, /paths\.endSession must contain exactly \{session_id\} once each/],
+    [{ liveness: '/liveness/{user_id}' }, /paths\.liveness must contain exactly no placeholders/],
+    [{ deepfakeCheck: '/deepfake' }, /paths\.deepfakeCheck is not a known SDK call/],
+    [{ checkDocAuth: '/docs' }, /paths\.checkDocAuth is not a known SDK call/],
+  ])('rejects the invalid paths override %p', (paths, message) => {
+    expect(() => new BiometrySDK({ baseUrl: PROXY, paths: paths as any })).toThrow(message);
+  });
+
+  it('rejects paths that is not an object', () => {
+    expect(() => new BiometrySDK({ baseUrl: PROXY, paths: ['/x'] as any })).toThrow(/paths must be an object/);
+  });
+
+  it('ignores an undefined paths entry', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY, paths: { liveness: undefined } });
+    mockOk({ data: {}, meta: {} });
+    await sdk.liveness(new File(['v'], 'v.mp4', { type: 'video/mp4' }), 'user-1', 'one two');
+    expect(fetch).toHaveBeenLastCalledWith(`${PROXY}/liveness`, expect.any(Object));
+  });
+
+  it('ignores paths without baseUrl, with a console warning, and does not validate them', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const sdk = new BiometrySDK({ apiKey: 'k1', paths: { endSession: 'not-a-path', bogus: '/x' } as any });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/`paths` only applies with `baseUrl`/);
+
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1');
+    expect(fetch).toHaveBeenLastCalledWith(`${V2}/sessions/sess-1/end`, expect.any(Object));
+  });
+
+  it.each([
+    ['giveAuthorizationConsent', (sdk: BiometrySDK) => sdk.giveAuthorizationConsent(true, 'user-1')],
+    ['giveStorageConsent', (sdk: BiometrySDK) => sdk.giveStorageConsent(true, 'user-1')],
+  ])('%s throws in proxy mode without calling fetch', async (name, call) => {
+    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY });
+    await expect(call(sdk)).rejects.toThrow(`${name} is not available in proxy mode: your backend records consent.`);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('sends static custom headers on every request', async () => {
@@ -445,10 +598,29 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
   });
 
   it('replaces SDK headers case-insensitively instead of sending both', async () => {
-    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY, headers: { authorization: 'Bearer other', 'content-type': 'text/plain' } });
+    const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY, headers: { authorization: 'Bearer other', 'x-app': 'a' } });
     mockOk({ meta: {} });
     await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
-    expect(lastInit().headers).toEqual({ authorization: 'Bearer other', 'Content-Type': 'application/json' });
+    expect(lastInit().headers).toEqual({ authorization: 'Bearer other', 'x-app': 'a', 'Content-Type': 'application/json' });
+  });
+
+  it('keeps Content-Type tied to the body: custom values are dropped for JSON and FormData', async () => {
+    const sdk = new BiometrySDK({ baseUrl: PROXY, headers: { 'content-type': 'text/plain' } });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1', { phoneNumber: '+15551234567' });
+    expect(lastInit().headers).toEqual({ 'Content-Type': 'application/json' });
+
+    mockOk({ data: {}, meta: {} });
+    await sdk.liveness(new File(['v'], 'v.mp4', { type: 'video/mp4' }), 'user-1', '12345678');
+    expect(lastInit().headers).toEqual({});
+    expect(lastInit().body).toBeInstanceOf(FormData);
+  });
+
+  it('trims whitespace around baseUrl', async () => {
+    const sdk = new BiometrySDK({ baseUrl: `  ${PROXY}/ \n` });
+    mockOk({ meta: {} });
+    await sdk.endSession('sess-1');
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/sessions/sess-1/end`, expect.any(Object));
   });
 
   it('ignores headers and credentials in direct mode, with one console warning', async () => {
@@ -471,11 +643,11 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('does not warn in direct mode without headers or credentials, or in proxy mode', () => {
+  it('does not warn in direct mode without headers, credentials or paths, or in proxy mode', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     new BiometrySDK('k1');
     new BiometrySDK({ apiKey: 'k1' });
-    new BiometrySDK({ baseUrl: PROXY, headers: { 'X-A': '1' }, credentials: 'include' });
+    new BiometrySDK({ baseUrl: PROXY, headers: { 'X-A': '1' }, credentials: 'include', paths: { liveness: '/l' } });
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -483,7 +655,7 @@ describe('BiometrySDK proxy mode (baseUrl)', () => {
     const sdk = new BiometrySDK({ apiKey: 'k1', baseUrl: PROXY });
     mockOk({ data: { session_id: 's' }, meta: {} });
     await sdk.startSession();
-    expect(fetch).toHaveBeenCalledWith(`${PROXY}/api-gateway/v2/sessions`, expect.objectContaining({
+    expect(fetch).toHaveBeenCalledWith(`${PROXY}/sessions`, expect.objectContaining({
       headers: { Authorization: 'Bearer k1' },
     }));
   });

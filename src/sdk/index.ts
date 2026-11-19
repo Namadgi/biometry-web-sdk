@@ -64,18 +64,29 @@ function setHeaders(target: Record<string, string>, source?: Record<string, stri
   }
 }
 
-/** Returns `baseUrl` without trailing slashes, or throws if it is not an absolute http(s) URL. */
+/**
+ * Returns `baseUrl` without surrounding whitespace or trailing slashes, or
+ * throws if it is not an absolute http(s) URL.
+ */
 function normalizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
   let url: URL;
   try {
-    url = new URL(baseUrl);
+    url = new URL(trimmed);
   } catch {
     throw new Error(`baseUrl must be an absolute http or https URL, got "${baseUrl}".`);
   }
-  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(baseUrl)) {
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || /[?#]/.test(trimmed)) {
     throw new Error(`baseUrl must be an absolute http or https URL with no "?" or "#", got "${baseUrl}".`);
   }
-  return baseUrl.replace(/\/+$/, '');
+  return trimTrailingSlashes(trimmed);
+}
+
+/** Removes trailing `/` characters without a regex (no backtracking on long inputs). */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
 }
 
 function isEmpty(value: unknown): boolean {
@@ -89,6 +100,80 @@ function compactRequest(request: V2RequestPart): V2RequestPart {
     if (!isEmpty(value)) out[key] = value;
   }
   return out as V2RequestPart;
+}
+
+/**
+ * The SDK calls whose path can be changed in proxy mode with
+ * {@link BiometrySDKOptions.paths}.
+ */
+export type ProxyOperation =
+  | 'startSession'
+  | 'endSession'
+  | 'liveness'
+  | 'faceVerify'
+  | 'voiceVerify'
+  | 'faceMatch'
+  | 'enrollFace'
+  | 'enrollVoice'
+  | 'checkDocument';
+
+/**
+ * Default path of each call in proxy mode, relative to `baseUrl`. These are
+ * the API v2 paths without the `/api-gateway/v2` prefix; direct mode sends the
+ * same paths under `https://api.biometrysolutions.com/api-gateway/v2`.
+ * `{name}` placeholders are filled with the URI-encoded value.
+ */
+export const DEFAULT_PROXY_PATHS: Readonly<Record<ProxyOperation, string>> = Object.freeze({
+  startSession: '/sessions',
+  endSession: '/sessions/{session_id}/end',
+  liveness: '/liveness',
+  faceVerify: '/face-verify',
+  voiceVerify: '/voice-verify',
+  faceMatch: '/face-match',
+  enrollFace: '/enrollments/face',
+  enrollVoice: '/enrollments/voice',
+  checkDocument: '/documents/check',
+});
+
+/** `{name}` placeholders in a path template, in order. */
+function placeholdersOf(template: string): string[] {
+  return [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+}
+
+/**
+ * Returns the default paths with `overrides` applied, or throws if an override
+ * names an unknown call, does not start with `/`, has a `?` or `#`, or does not
+ * have exactly the placeholders of the default path.
+ */
+function resolvePaths(overrides: Partial<Record<ProxyOperation, string>>): Record<ProxyOperation, string> {
+  if (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) {
+    throw new Error('paths must be an object that maps SDK calls to paths.');
+  }
+  const paths: Record<ProxyOperation, string> = { ...DEFAULT_PROXY_PATHS };
+  for (const [key, path] of Object.entries(overrides)) {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT_PROXY_PATHS, key)) {
+      throw new Error(`paths.${key} is not a known SDK call. Known calls: ${Object.keys(DEFAULT_PROXY_PATHS).join(', ')}.`);
+    }
+    if (path === undefined) continue;
+    const operation = key as ProxyOperation;
+    if (typeof path !== 'string' || !path.startsWith('/')) {
+      throw new Error(`paths.${key} must be a string that starts with "/", got ${JSON.stringify(path)}.`);
+    }
+    if (/[?#]/.test(path)) {
+      throw new Error(`paths.${key} must not contain "?" or "#", got "${path}".`);
+    }
+    const expected = placeholdersOf(DEFAULT_PROXY_PATHS[operation]);
+    const found = placeholdersOf(path);
+    const stray = path.replace(/\{\w+\}/g, '');
+    if (/[{}]/.test(stray)
+      || found.length !== expected.length
+      || [...expected].sort().join() !== [...found].sort().join()) {
+      const want = expected.length ? expected.map((p) => `{${p}}`).join(', ') + ' once each' : 'no placeholders';
+      throw new Error(`paths.${key} must contain exactly ${want}, got "${path}".`);
+    }
+    paths[operation] = path;
+  }
+  return paths;
 }
 
 /** Extra headers sent on every request: a fixed object, or a function called per request. */
@@ -109,12 +194,23 @@ export interface BiometrySDKOptions {
    */
   apiKey?: string;
   /**
-   * Absolute http(s) origin (plus optional path prefix) that replaces
-   * `https://api.biometrysolutions.com`. Request paths are kept as is, so
+   * Absolute http(s) origin (plus optional path prefix) of your backend proxy.
+   * Each call goes to `baseUrl` plus its path from {@link DEFAULT_PROXY_PATHS}
+   * (the API v2 path without `/api-gateway/v2`), so
    * `baseUrl: 'https://app.example.com/biometry'` sends session starts to
-   * `https://app.example.com/biometry/api-gateway/v2/sessions`.
+   * `https://app.example.com/biometry/sessions`. Change single paths with
+   * `paths`. The legacy consent calls are not available in proxy mode.
    */
   baseUrl?: string;
+  /**
+   * Your proxy's path for some SDK calls, replacing the
+   * {@link DEFAULT_PROXY_PATHS} entry, for example
+   * `{ endSession: '/biometry-sessions/{session_id}/finish' }`. Each path must
+   * start with `/`, have no `?` or `#`, and contain exactly the placeholders of
+   * the default path; placeholder values are URI-encoded. Unknown keys throw.
+   * Only used with `baseUrl`; without it, it is ignored with a console warning.
+   */
+  paths?: Partial<Record<ProxyOperation, string>>;
   /**
    * Extra headers sent on every request, for example your app's own session
    * token for the proxy. Applied after the `Authorization` header from
@@ -136,6 +232,8 @@ export class BiometrySDK {
   private readonly baseUrl: string;
   private readonly extraHeaders?: BiometryHeaders;
   private readonly credentials?: RequestCredentials;
+  /** Path templates relative to `baseUrl`, set in proxy mode only. */
+  private readonly proxyPaths?: Record<ProxyOperation, string>;
   private static readonly BASE_URL: string = 'https://api.biometrysolutions.com';
   /** API v2 gateway prefix. */
   private static readonly GATEWAY_V2: string = '/api-gateway/v2';
@@ -143,8 +241,9 @@ export class BiometrySDK {
   /**
    * @param apiKeyOrOptions - Your project API key (direct mode), or
    *   {@link BiometrySDKOptions} (for proxy mode, `{ baseUrl }` with no `apiKey`).
-   * @throws {Error} If neither an API key nor a `baseUrl` is given, or if
-   *   `baseUrl` is not an absolute http(s) URL with no `?` or `#`.
+   * @throws {Error} If neither an API key nor a `baseUrl` is given, if
+   *   `baseUrl` is not an absolute http(s) URL with no `?` or `#`, or if a
+   *   `paths` entry is invalid (proxy mode only).
    */
   constructor(apiKeyOrOptions: string | BiometrySDKOptions) {
     if (typeof apiKeyOrOptions === 'string' || apiKeyOrOptions == null) {
@@ -167,10 +266,39 @@ export class BiometrySDK {
     if (options.baseUrl) {
       this.extraHeaders = options.headers;
       this.credentials = options.credentials;
-    } else if (options.headers || options.credentials) {
+      this.proxyPaths = resolvePaths(options.paths ?? {});
+    } else {
       // Direct mode talks to the Biometry API itself, which only needs the API
-      // key. Custom headers and credentials are meant for your own proxy.
-      console.warn('BiometrySDK: `headers` and `credentials` only apply with `baseUrl` (proxy mode); they are ignored.');
+      // key. Custom headers, credentials and paths are meant for your own proxy.
+      if (options.headers || options.credentials) {
+        console.warn('BiometrySDK: `headers` and `credentials` only apply with `baseUrl` (proxy mode); they are ignored.');
+      }
+      if (options.paths) {
+        console.warn('BiometrySDK: `paths` only applies with `baseUrl` (proxy mode); it is ignored.');
+      }
+    }
+  }
+
+  /**
+   * The request path for `operation`: in proxy mode the (possibly overridden)
+   * path relative to `baseUrl`, in direct mode the API v2 gateway path.
+   * `{name}` placeholders are replaced with the URI-encoded `params[name]`.
+   */
+  private pathFor(operation: ProxyOperation, params: Record<string, string> = {}): string {
+    const template = this.proxyPaths
+      ? this.proxyPaths[operation]
+      : `${BiometrySDK.GATEWAY_V2}${DEFAULT_PROXY_PATHS[operation]}`;
+    return template.replace(/\{(\w+)\}/g, (_, name: string) => encodeURIComponent(params[name]));
+  }
+
+  /**
+   * Throws in proxy mode: the legacy consent-service calls have no proxy
+   * route, because the integrator's backend records consent itself.
+   */
+  private rejectInProxyMode(method: string): void {
+    if (this.proxyPaths) {
+      throw new Error(`${method} is not available in proxy mode: your backend records consent. `
+        + 'Call your backend directly (the reference proxy has POST /onboarding/consent).');
     }
   }
 
@@ -188,6 +316,12 @@ export class BiometrySDK {
     const requestHeaders: Record<string, string> = { ...defaultHeaders };
     setHeaders(requestHeaders, extra);
     setHeaders(requestHeaders, headers);
+    // Content-Type follows the body: JSON gets application/json, and FormData
+    // needs fetch to set multipart/form-data with its boundary. A custom value
+    // would break either, so it is dropped.
+    for (const name of Object.keys(requestHeaders)) {
+      if (name.toLowerCase() === 'content-type') delete requestHeaders[name];
+    }
 
     if (body && !(body instanceof FormData)) {
       setHeaders(requestHeaders, { 'Content-Type': 'application/json' });
@@ -277,7 +411,7 @@ export class BiometrySDK {
   async startSession(props?: { warmup?: boolean }): Promise<ApiResponse<SuccessEnvelope<SessionStartData>>> {
     const query = props?.warmup ? '?warmup=true' : '';
     return await this.request<SuccessEnvelope<SessionStartData>>(
-      `${BiometrySDK.GATEWAY_V2}/sessions${query}`,
+      `${this.pathFor('startSession')}${query}`,
       'POST'
     );
   }
@@ -297,7 +431,7 @@ export class BiometrySDK {
     const body = props?.phoneNumber ? { phone_number: props.phoneNumber } : undefined;
 
     return await this.request<SuccessEnvelope>(
-      `${BiometrySDK.GATEWAY_V2}/sessions/${encodeURIComponent(sessionId)}/end`,
+      this.pathFor('endSession', { session_id: sessionId }),
       'POST',
       body
     );
@@ -309,14 +443,18 @@ export class BiometrySDK {
    *
    * Note: consent is served by the dedicated consent service (`/api-consent`), not
    * the API gateway, so this call is unaffected by the gateway v2 migration.
+   * Direct mode only: with `baseUrl` (proxy mode) your backend records consent,
+   * so this call throws.
    *
    * @param {boolean} isConsentGiven - Indicates whether the user has given consent.
-   * @param {string} userFullName - The full name of the user giving consent.
+   * @param {string} userFullName - Your `user_id` for the user (the consent service calls it
+   *   `user_fullname`). Not the person's name: the value is the subject of the consent record.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
-   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   * @throws {Error} - In proxy mode (`baseUrl` set), always, before any request is sent.
+   *   In direct mode, if `userFullName` (your user_id) is not provided, or if the request fails.
    */
   async giveAuthorizationConsent(
     isConsentGiven: boolean,
@@ -326,6 +464,7 @@ export class BiometrySDK {
       deviceInfo?: object,
     }
   ): Promise<ApiResponse<ConsentResponse>> {
+    this.rejectInProxyMode('giveAuthorizationConsent');
     if (!userFullName) {
       throw new Error('User Full Name is required to give consent.');
     }
@@ -359,14 +498,18 @@ export class BiometrySDK {
    *
    * Note: consent is served by the dedicated consent service (`/api-consent`), not
    * the API gateway, so this call is unaffected by the gateway v2 migration.
+   * Direct mode only: with `baseUrl` (proxy mode) your backend records consent,
+   * so this call throws.
    *
    * @param {boolean} isStorageConsentGiven - Indicates whether the user has given storage consent.
-   * @param {string} userFullName - The full name of the user giving storage consent.
+   * @param {string} userFullName - Your `user_id` for the user (the consent service calls it
+   *   `user_fullname`). Not the person's name: the value is the subject of the consent record.
    * @param {Object} [props] - Optional properties for the consent request.
    * @param {string} [props.sessionId] - Session ID to link this consent with a specific session group.
    * @param {object} [props.deviceInfo] - Device information object.
    * @returns {Promise<ApiResponse<ConsentResponse>>} A promise resolving to the consent response.
-   * @throws {Error} - If the user's full name is not provided or if the request fails.
+   * @throws {Error} - In proxy mode (`baseUrl` set), always, before any request is sent.
+   *   In direct mode, if `userFullName` (your user_id) is not provided, or if the request fails.
    */
   async giveStorageConsent(
     isStorageConsentGiven: boolean,
@@ -376,6 +519,7 @@ export class BiometrySDK {
       deviceInfo?: object,
     }
   ): Promise<ApiResponse<ConsentResponse>> {
+    this.rejectInProxyMode('giveStorageConsent');
     if (!userFullName) {
       throw new Error('User Full Name is required to give storage consent.');
     }
@@ -432,7 +576,7 @@ export class BiometrySDK {
     );
 
     return await this.request<SuccessEnvelope<EnrollmentData>>(
-      `${BiometrySDK.GATEWAY_V2}/enrollments/voice`,
+      this.pathFor('enrollVoice'),
       'POST',
       formData
     );
@@ -464,7 +608,7 @@ export class BiometrySDK {
     );
 
     return await this.request<SuccessEnvelope<EnrollmentData>>(
-      `${BiometrySDK.GATEWAY_V2}/enrollments/face`,
+      this.pathFor('enrollFace'),
       'POST',
       formData
     );
@@ -501,7 +645,7 @@ export class BiometrySDK {
     );
 
     return await this.request<SuccessEnvelope<DocAuthInfo>>(
-      `${BiometrySDK.GATEWAY_V2}/documents/check`,
+      this.pathFor('checkDocument'),
       'POST',
       formData
     );
@@ -544,7 +688,7 @@ export class BiometrySDK {
     );
 
     return await this.request<SuccessEnvelope<FaceMatchData>>(
-      `${BiometrySDK.GATEWAY_V2}/face-match`,
+      this.pathFor('faceMatch'),
       'POST',
       formData
     );
@@ -593,7 +737,7 @@ export class BiometrySDK {
     );
 
     return await this.request<SuccessEnvelope<LivenessData>>(
-      `${BiometrySDK.GATEWAY_V2}/liveness`,
+      this.pathFor('liveness'),
       'POST',
       formData
     );
@@ -605,7 +749,8 @@ export class BiometrySDK {
    *
    * @param {File} video - Portrait video/image of the user.
    * @param {string} userId - Opaque, customer-provided identity key for the user.
-   * @param {string} phrase - Set of numbers/words the user speaks in the video.
+   * @param {string} [phrase] - Optional. The API no longer needs a phrase for face verification;
+   *   it is sent only when it is a non-empty string. Pass `undefined` to skip it and still give `props`.
    * @param {Object} [props] - Optional properties for the request.
    * @param {string} [props.sessionId] - Session ID for combined scoring.
    * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits').
@@ -615,7 +760,7 @@ export class BiometrySDK {
   async faceVerify(
     video: File,
     userId: string,
-    phrase: string,
+    phrase?: string,
     props?: {
       sessionId?: string,
       vocabulary?: string,
@@ -623,15 +768,19 @@ export class BiometrySDK {
   ): Promise<ApiResponse<SuccessEnvelope<FaceVerifyData>>> {
     if (!video) throw new Error('Video is required.');
     if (!userId) throw new Error('User ID is required.');
-    if (!phrase) throw new Error('Phrase is required.');
 
     const formData = BiometrySDK.buildMultipart(
-      { user_id: userId, phrase, session_id: props?.sessionId, vocabulary: props?.vocabulary },
+      {
+        user_id: userId,
+        phrase: typeof phrase === 'string' && phrase !== '' ? phrase : undefined,
+        session_id: props?.sessionId,
+        vocabulary: props?.vocabulary,
+      },
       { video }
     );
 
     return await this.request<SuccessEnvelope<FaceVerifyData>>(
-      `${BiometrySDK.GATEWAY_V2}/face-verify`,
+      this.pathFor('faceVerify'),
       'POST',
       formData
     );
@@ -669,7 +818,7 @@ export class BiometrySDK {
     );
 
     return await this.request<SuccessEnvelope<VoiceVerifyData>>(
-      `${BiometrySDK.GATEWAY_V2}/voice-verify`,
+      this.pathFor('voiceVerify'),
       'POST',
       formData
     );
