@@ -391,6 +391,22 @@ export class BiometrySDK {
    * @param request - Fields for the JSON `request` part (empty values are dropped).
    * @param files - Named file parts; entries with an undefined file are skipped.
    */
+  /**
+   * Checks the media arguments of a verify call: a file, or `useSessionVideo`
+   * with the `sessionId` whose stored video the gateway should reuse.
+   */
+  private static checkSessionVideo(
+    file: File | null | undefined,
+    props: { sessionId?: string, useSessionVideo?: boolean } | undefined,
+    missingFileMessage: string,
+  ): void {
+    if (props?.useSessionVideo) {
+      if (!props.sessionId) throw new Error('Session ID is required to reuse the session video.');
+      return;
+    }
+    if (!file) throw new Error(missingFileMessage);
+  }
+
   private static buildMultipart(request: V2RequestPart, files: Record<string, File | undefined>): FormData {
     const formData = new FormData();
     formData.append('request', JSON.stringify(compactRequest(request)));
@@ -747,26 +763,33 @@ export class BiometrySDK {
    * Verifies a user's face from a video/image against their enrolled face template.
    * Replaces part of the v1 `processVideo` flow.
    *
-   * @param {File} video - Portrait video/image of the user.
+   * In a session, use the media the liveness check saw: pass the same video file again, or
+   * `useSessionVideo` with no file. Other media is refused with 400 `media_mismatch` once the
+   * gateway enforces media binding.
+   *
+   * @param {File | null} video - Portrait video/image of the user. Pass `null` with `useSessionVideo`.
    * @param {string} userId - Opaque, customer-provided identity key for the user.
    * @param {string} [phrase] - Optional. The API no longer needs a phrase for face verification;
    *   it is sent only when it is a non-empty string. Pass `undefined` to skip it and still give `props`.
    * @param {Object} [props] - Optional properties for the request.
-   * @param {string} [props.sessionId] - Session ID for combined scoring.
+   * @param {string} [props.sessionId] - Session ID for combined scoring. Required with `useSessionVideo`.
    * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits').
+   * @param {boolean} [props.useSessionVideo] - Reuse the video the session's liveness check stored
+   *   instead of uploading one; `video` is then not sent.
    * @returns {Promise<ApiResponse<SuccessEnvelope<FaceVerifyData>>>} - A promise resolving to the face verify envelope.
    * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
   async faceVerify(
-    video: File,
+    video: File | null | undefined,
     userId: string,
     phrase?: string,
     props?: {
       sessionId?: string,
       vocabulary?: string,
+      useSessionVideo?: boolean,
     }
   ): Promise<ApiResponse<SuccessEnvelope<FaceVerifyData>>> {
-    if (!video) throw new Error('Video is required.');
+    BiometrySDK.checkSessionVideo(video, props, 'Video is required.');
     if (!userId) throw new Error('User ID is required.');
 
     const formData = BiometrySDK.buildMultipart(
@@ -775,8 +798,9 @@ export class BiometrySDK {
         phrase: typeof phrase === 'string' && phrase !== '' ? phrase : undefined,
         session_id: props?.sessionId,
         vocabulary: props?.vocabulary,
+        use_session_video: props?.useSessionVideo || undefined,
       },
-      { video }
+      { video: props?.useSessionVideo ? undefined : video ?? undefined }
     );
 
     return await this.request<SuccessEnvelope<FaceVerifyData>>(
@@ -790,31 +814,45 @@ export class BiometrySDK {
    * Verifies a user's voice from an audio/video file against their enrolled voice template.
    * Replaces part of the v1 `processVideo` flow.
    *
-   * @param {File} voice - Audio/video file containing the user's speech.
+   * In a session, use the media the liveness check saw: pass the liveness video file again (not a
+   * separately recorded audio file), or `useSessionVideo` with no file. Other media is refused with
+   * 400 `media_mismatch` once the gateway enforces media binding.
+   *
+   * @param {File | null} voice - Audio/video file containing the user's speech. Pass `null` with
+   *   `useSessionVideo`.
    * @param {string} userId - Opaque, customer-provided identity key for the user.
    * @param {string} phrase - Set of numbers/words the user speaks.
    * @param {Object} [props] - Optional properties for the request.
-   * @param {string} [props.sessionId] - Session ID for combined scoring.
+   * @param {string} [props.sessionId] - Session ID for combined scoring. Required with `useSessionVideo`.
    * @param {string} [props.vocabulary] - Vocabulary hint for speech recognition (e.g. 'en_digits').
+   * @param {boolean} [props.useSessionVideo] - Reuse the video the session's liveness check stored
+   *   instead of uploading one; `voice` is then not sent.
    * @returns {Promise<ApiResponse<SuccessEnvelope<VoiceVerifyData>>>} - A promise resolving to the voice verify envelope.
    * @throws {Error|BiometryApiError} - If required parameters are missing or the request fails.
    */
   async voiceVerify(
-    voice: File,
+    voice: File | null | undefined,
     userId: string,
     phrase: string,
     props?: {
       sessionId?: string,
       vocabulary?: string,
+      useSessionVideo?: boolean,
     }
   ): Promise<ApiResponse<SuccessEnvelope<VoiceVerifyData>>> {
-    if (!voice) throw new Error('Voice file is required.');
+    BiometrySDK.checkSessionVideo(voice, props, 'Voice file is required.');
     if (!userId) throw new Error('User ID is required.');
     if (!phrase) throw new Error('Phrase is required.');
 
     const formData = BiometrySDK.buildMultipart(
-      { user_id: userId, phrase, session_id: props?.sessionId, vocabulary: props?.vocabulary },
-      { voice }
+      {
+        user_id: userId,
+        phrase,
+        session_id: props?.sessionId,
+        vocabulary: props?.vocabulary,
+        use_session_video: props?.useSessionVideo || undefined,
+      },
+      { voice: props?.useSessionVideo ? undefined : voice ?? undefined }
     );
 
     return await this.request<SuccessEnvelope<VoiceVerifyData>>(

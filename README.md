@@ -108,7 +108,8 @@ Your backend must:
 [`examples/proxy-server`](examples/proxy-server/) is a runnable, zero-dependency proxy that does all of this, with a `node --test` suite. It also shows the two jobs your backend must do itself in proxy mode:
 
 - **Consent.** Record the user's authorization and storage consent from your backend with your API key (`PUT /api-gateway/v2/users/{user_id}/consents` with `{"authorization": true, "storage": true}`), for example in your onboarding flow before the first enrollment. The SDK's consent methods throw in proxy mode, so a browser can't record consent for another user; call your own backend instead (the example proxy has `POST /onboarding/consent`).
-- **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge.
+- **Liveness challenge.** Your backend issues the digits the user reads for a session, keeps its own copy, and writes it into `phrase` on `liveness` and `voiceVerify` (each may use it once per session; pass the `sessionId`), ignoring the phrase the browser sends. `faceVerify` needs no challenge. A failed liveness check still answers `200`, so it uses up the challenge: to retry, issue a new one for the session.
+- **Media binding.** Allow `use_session_video` on face-verify and voice-verify, so the app can reuse the liveness video instead of uploading other media (see "In a session, use the liveness video" above).
 - Your user ids must be 3 to 128 characters of `A-Za-z0-9._:@-`.
 
 The SDK methods still take a `userId` and a `phrase` in proxy mode. Pass your backend's id for the signed-in user as `userId` (the proxy sets `user_id` from your session anyway), and pass the challenge you displayed as `phrase` on `liveness()` and `voiceVerify()`: the proxy overwrites it with its own copy, but the SDK still requires a non-empty value.
@@ -263,9 +264,20 @@ console.log(response.body.data.face_recognition);
 **Voice verification** — verify speech audio against the user's enrolled voice:
 
 ```typescript
-const response = await sdk.voiceVerify(audioFile, 'user-123', '12345678', { sessionId });
+const response = await sdk.voiceVerify(audioFile, 'user-123', '12345678');
 console.log(response.body.data.voice_recognition);
 ```
+
+**In a session, use the liveness video for face and voice.** Face and voice results in a session count only when they come from the media the liveness check saw. Pass the same video file to `faceVerify` and `voiceVerify` again (not a separately recorded audio file), or set `useSessionVideo` and pass `null` so the gateway reuses the video it stored:
+
+```typescript
+await sdk.liveness(videoFile, 'user-123', challenge, { sessionId });
+await sdk.faceVerify(null, 'user-123', undefined, { sessionId, useSessionVideo: true });
+await sdk.voiceVerify(null, 'user-123', challenge, { sessionId, useSessionVideo: true });
+const ended = await sdk.endSession(sessionId); // the session's decision
+```
+
+Other media is refused with `400 media_mismatch` once the gateway enforces media binding. A new liveness check replaces the session's media and discards earlier face and voice results, so run them again after the last liveness check.
 
 When a scoring system is configured for the API key, check `response.body.decision.status` (`"pass"` / `"fail"` / `"refer"`) and `response.body.decision.reasons`.
 
@@ -464,11 +476,12 @@ Submit authorization / storage consent (served by the consent service). Direct m
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `video` / `voice` | `File` | Yes | Video (face) or audio/video (voice) file |
+| `video` / `voice` | `File \| null` | Yes, unless `props.useSessionVideo` | Video (face) or audio/video (voice) file. In a session, the liveness video |
 | `userId` | `string` | Yes | Opaque identity key for the user |
 | `phrase` | `string` | `voiceVerify`: Yes. `faceVerify`: No | Digits/words the user speaks. The API no longer needs it for `faceVerify`; it is sent only when non-empty. Pass `undefined` to skip it and still give `props` |
-| `props.sessionId` | `string` | No | Session ID for combined scoring |
+| `props.sessionId` | `string` | No | Session ID for combined scoring. Required with `useSessionVideo` |
 | `props.vocabulary` | `string` | No | Vocabulary hint (e.g. `'en_digits'`) |
+| `props.useSessionVideo` | `boolean` | No | Reuse the video the session's liveness check stored; the file argument is then not sent |
 
 **Returns:** `Promise<ApiResponse<SuccessEnvelope<FaceVerifyData>>>` / `Promise<ApiResponse<SuccessEnvelope<VoiceVerifyData>>>`
 

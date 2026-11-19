@@ -263,6 +263,52 @@ describe('BiometrySDK', () => {
     expect(formDataSpy).not.toHaveBeenCalledWith('video', expect.anything());
   });
 
+  // SESSION VIDEO ON FACE-VERIFY / VOICE-VERIFY (BM-535 media binding)
+  it('should face-verify reusing the session video without a file', async () => {
+    mockOk({ data: {}, meta: {} });
+    const formDataSpy = jest.spyOn(FormData.prototype, 'append');
+    await sdk.faceVerify(null, 'user-1', undefined, { sessionId: 'sess-1', useSessionVideo: true });
+
+    expect(requestPartFrom(formDataSpy)).toEqual({ user_id: 'user-1', session_id: 'sess-1', use_session_video: true });
+    expect(formDataSpy).not.toHaveBeenCalledWith('video', expect.anything());
+    expect(fetch).toHaveBeenCalledWith(`${V2}/face-verify`, expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('should voice-verify reusing the session video without a file', async () => {
+    mockOk({ data: {}, meta: {} });
+    const formDataSpy = jest.spyOn(FormData.prototype, 'append');
+    await sdk.voiceVerify(null, 'user-1', 'one two', { sessionId: 'sess-1', useSessionVideo: true });
+
+    expect(requestPartFrom(formDataSpy)).toEqual({
+      user_id: 'user-1', phrase: 'one two', session_id: 'sess-1', use_session_video: true,
+    });
+    expect(formDataSpy).not.toHaveBeenCalledWith('voice', expect.anything());
+    expect(fetch).toHaveBeenCalledWith(`${V2}/voice-verify`, expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('should not send the file when reusing the session video even if one is given', async () => {
+    mockOk({ data: {}, meta: {} });
+    const videoFile = new File(['video data'], 'video.mp4', { type: 'video/mp4' });
+    const formDataSpy = jest.spyOn(FormData.prototype, 'append');
+    await sdk.voiceVerify(videoFile, 'user-1', 'one two', { sessionId: 'sess-1', useSessionVideo: true });
+
+    expect(formDataSpy).not.toHaveBeenCalledWith('voice', expect.anything());
+  });
+
+  it('should require a session id to reuse the session video on face-verify and voice-verify', async () => {
+    await expect(sdk.faceVerify(null, 'user-1', undefined, { useSessionVideo: true }))
+      .rejects.toThrowError('Session ID is required to reuse the session video.');
+    await expect(sdk.voiceVerify(null, 'user-1', 'one two', { useSessionVideo: true }))
+      .rejects.toThrowError('Session ID is required to reuse the session video.');
+  });
+
+  it('should still require a file on face-verify and voice-verify without useSessionVideo', async () => {
+    await expect(sdk.faceVerify(null, 'user-1', undefined, { sessionId: 'sess-1' }))
+      .rejects.toThrowError('Video is required.');
+    await expect(sdk.voiceVerify(null, 'user-1', 'one two', { sessionId: 'sess-1' }))
+      .rejects.toThrowError('Voice file is required.');
+  });
+
   // LIVENESS / FACE-VERIFY / VOICE-VERIFY
   it('should throw if liveness video is missing', async () => {
     await expect(sdk.liveness(null as unknown as File, 'user-1', 'one two')).rejects.toThrowError('Video is required.');

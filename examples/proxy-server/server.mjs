@@ -377,13 +377,17 @@ export const ROUTES = [
     // The client may not skip the challenge checks or anti-spoofing.
     requiredServices: LIVENESS_REQUIRED_SERVICES,
   }),
+  // In a session, face-verify and voice-verify must use the liveness video
+  // (same file again, or use_session_video with no file); the gateway refuses
+  // other media with 400 media_mismatch once it enforces media binding.
   route('POST', '/face-verify', {
     upstream: '/face-verify',
-    body: 'multipart', setUser: true, fields: ['session_id'], files: { video: 1 },
+    body: 'multipart', setUser: true, fields: ['session_id', 'use_session_video'], files: { video: 1 },
   }),
   route('POST', '/voice-verify', {
     upstream: '/voice-verify',
-    body: 'multipart', setUser: true, challenge: 'voice-verify', fields: ['session_id'], files: { voice: 1 },
+    body: 'multipart', setUser: true, challenge: 'voice-verify',
+    fields: ['session_id', 'use_session_video'], files: { voice: 1 },
   }),
   route('POST', '/face-match', {
     upstream: '/face-match',

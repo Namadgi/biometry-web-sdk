@@ -461,6 +461,26 @@ test('face-verify needs no challenge and sends no phrase', async () => {
   assert.deepEqual(await upstreamPart(received[0]), { session_id: 'sess-mine', user_id: 'user-123' });
 });
 
+test('face-verify and voice-verify forward use_session_video with no file (BM-535 media binding)', async () => {
+  await issueChallenge();
+  let res = await post('/face-verify', multipart({ session_id: 'sess-mine', use_session_video: true }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(await upstreamPart(received[0]), { session_id: 'sess-mine', use_session_video: true, user_id: 'user-123' });
+  res = await post('/voice-verify', multipart({ session_id: 'sess-mine', use_session_video: true }));
+  assert.equal(res.status, 200);
+  const part = await upstreamPart(received[1]);
+  assert.equal(part.use_session_video, true);
+  assert.equal(part.session_id, 'sess-mine');
+  const form = await upstreamForm(received[1]);
+  assert.equal(form.getAll('voice').length, 0);
+});
+
+test('use_session_video must be a boolean', async () => {
+  const res = await post('/face-verify', multipart({ session_id: 'sess-mine', use_session_video: 'yes' }));
+  assert.equal(res.status, 400);
+  assert.equal(received.length, 0);
+});
+
 test('a missing challenge gives 409 and nothing is sent to Biometry', async () => {
   const res = await post('/liveness', multipart({ session_id: 'sess-mine', phrase: '12345678' }, { video: 'v' }));
   assert.equal(res.status, 409);
